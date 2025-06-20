@@ -107,12 +107,31 @@ class OrchestratorController {
    */
   async trainRaw(req, res) {
     try {
-      const { discharges } = req.body || {};
+      const meta = req.body.metadata ? JSON.parse(req.body.metadata) : null;
 
-      if (!discharges || !Array.isArray(discharges) || discharges.length === 0) {
+      if (!meta || !Array.isArray(meta.discharges) || meta.discharges.length === 0) {
         return res.status(StatusCodes.BAD_REQUEST).json({
-          error: 'Se requieren descargas con archivos para entrenar'
+          error: 'Metadata de descargas es requerida'
         });
+      }
+
+      const discharges = meta.discharges.map((d, idx) => ({
+        id: d.id || `discharge_${idx + 1}`,
+        anomalyTime: d.anomalyTime !== undefined ? d.anomalyTime : null,
+        files: []
+      }));
+
+      for (const file of req.files || []) {
+        const match = file.fieldname.match(/^discharge(\d+)$/);
+        if (match) {
+          const index = parseInt(match[1], 10);
+          if (discharges[index]) {
+            discharges[index].files.push({
+              name: file.originalname,
+              buffer: file.buffer
+            });
+          }
+        }
       }
 
       const parsed = orchestratorService.prepareTrainingData(discharges);

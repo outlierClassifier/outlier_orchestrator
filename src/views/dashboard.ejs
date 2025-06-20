@@ -1445,21 +1445,16 @@
             });
 
             container.querySelectorAll('.discharge-files-input').forEach(input => {
-                input.addEventListener('change', async function (e) {
+                input.addEventListener('change', function (e) {
                     const dischargeId = parseInt(this.getAttribute('data-discharge-id'));
                     const dischargeIndex = discharges.findIndex(d => d.id === dischargeId);
 
                     if (dischargeIndex !== -1 && e.target.files.length > 0) {
                         for (const file of e.target.files) {
-                            try {
-                                const content = await readFileAsText(file);
-                                discharges[dischargeIndex].files.push({
-                                    name: file.name,
-                                    content
-                                });
-                            } catch (error) {
-                                alert(`Error at reading file ${file.name}: ${error.message}`);
-                            }
+                            discharges[dischargeIndex].files.push({
+                                name: file.name,
+                                file
+                            });
                         }
 
                         renderDischarges();
@@ -1490,7 +1485,7 @@
 
                     if (dischargeIndex !== -1 && discharges[dischargeIndex].files[fileIndex]) {
                         const file = discharges[dischargeIndex].files[fileIndex];
-                        showFilePreview(file.name, file.content);
+                        showFilePreview(file.name, file.file);
                     }
                 });
             });
@@ -1549,112 +1544,14 @@
                 return;
             }
 
-            // Create data structure for the preview with optimized format
-            const previewData = { discharges: [] };
+            const previewData = {
+                discharges: discharges.map(d => ({
+                    id: d.id,
+                    anomalyTime: d.anomalyTime,
+                    files: d.files.map(f => f.name)
+                }))
+            };
 
-            // Process each discharge
-            discharges.forEach(discharge => {
-                if (discharge.files.length === 0) {
-                    return; // Skip discharges without files
-                }
-
-                let dischargeId = `discharge_${discharge.id + 1}`;
-
-                // Try to extract the identifier from the file name
-                if (discharge.files.length > 0) {
-                    const fileName = discharge.files[0].name;
-                    const match = fileName.match(/DES_(\d+)/i);
-                    if (match && match[1]) {
-                        dischargeId = match[1];
-                    }
-                }
-
-                const dischargeData = {
-                    id: dischargeId,
-                    signals: []
-                };
-
-                // Add anomaly time if defined
-                if (discharge.anomalyTime !== null) {
-                    dischargeData.anomalyTime = discharge.anomalyTime;
-                }
-
-                // Check if all files have the same times
-                let commonTimes = [];
-                let allSameTime = true;
-                let firstFileTimes = null;
-
-                // Take the first 5 lines for the preview
-                discharge.files.forEach((file, index) => {
-                    const lines = file.content.trim().split('\n');
-                    const previewLines = Math.min(5, lines.length);
-                    const times = [];
-
-                    for (let i = 0; i < previewLines; i++) {
-                        const parts = lines[i].trim().split(/\s+/);
-                        if (parts.length >= 2) {
-                            times.push(parseFloat(parts[0]));
-                        }
-                    }
-
-                    if (index === 0) {
-                        firstFileTimes = times;
-                    } else if (JSON.stringify(times) !== JSON.stringify(firstFileTimes)) {
-                        allSameTime = false;
-                    }
-                });
-
-                if (allSameTime && firstFileTimes) {
-                    dischargeData.times = firstFileTimes;
-                    const totalLines = discharge.files[0].content.trim().split('\n').length;
-                    dischargeData.length = totalLines;
-                    if (totalLines > 5) {
-                        dischargeData._previewNote = `... displaying 5 of ${totalLines} lines`;
-                    }
-                }
-
-                // Process each file
-                discharge.files.forEach(file => {
-                    try {
-                        const lines = file.content.trim().split('\n');
-                        const previewLines = Math.min(5, lines.length);
-                        const times = [];
-                        const values = [];
-
-                        for (let i = 0; i < previewLines; i++) {
-                            const line = lines[i].trim();
-                            const parts = line.split(/\s+/);
-                            if (parts.length >= 2) {
-                                if (!allSameTime) {
-                                    times.push(parseFloat(parts[0]));
-                                }
-                                values.push(parseFloat(parts[1]));
-                            }
-                        }
-
-                        const sensorData = {
-                            fileName: file.name,
-                            values: values
-                        };
-
-                        // Solo incluimos tiempos si no son comunes
-                        if (!allSameTime) {
-                            sensorData.times = times;
-                            const totalLines = file.content.trim().split('\n').length;
-                            sensorData.length = totalLines;
-                            if (totalLines > 5) {
-                                sensorData._previewNote = `... showing 5 of ${totalLines} lines`;
-                            }
-                        }
-
-                        dischargeData.signals.push(sensorData);
-                    } catch (error) {
-                        console.error(`Error processing file ${file.name}:`, error);
-                    }
-                });
-
-                previewData.discharges.push(dischargeData);
-            });            // Format the JSON for display
             document.getElementById('jsonPreview').textContent = JSON.stringify(previewData, null, 2);
         }
 
@@ -1674,20 +1571,13 @@
                 return;
             }
 
-            // Read all files
-            Promise.all(files.map(file => {
-                return readFileAsText(file).then(content => ({
-                    name: file.name,
-                    content: content,
-                    file: file
-                }));
-            })).then(filesData => {
-                selectedMultipleFiles = filesData;
-                updateMultipleDischargeFilesPreview();
-                document.getElementById('testPatternsBtn').disabled = false;
-            }).catch(error => {
-                alert(`Error reading files: ${error.message}`);
-            });
+            // Store file references only
+            selectedMultipleFiles = files.map(file => ({
+                name: file.name,
+                file: file
+            }));
+            updateMultipleDischargeFilesPreview();
+            document.getElementById('testPatternsBtn').disabled = false;
         }
 
         function updateMultipleDischargeFilesPreview() {
@@ -1829,7 +1719,7 @@
                     if (fileData) {
                         discharge.files.push({
                             name: fileData.name,
-                            content: fileData.content
+                            file: fileData.file
                         });
                     }
                 });
@@ -2219,7 +2109,12 @@
         };
 
         // File preview with graph visualization
-        function showFilePreview(fileName, content, anomalyTime = null) {
+        function showFilePreview(fileName, fileOrContent, anomalyTime = null) {
+            const loadContent = typeof fileOrContent === 'string'
+                ? Promise.resolve(fileOrContent)
+                : readFileAsText(fileOrContent);
+
+            loadContent.then(content => {
             // Store reference to any existing chart to destroy it
             let chartInstance = window.signalChartInstance;
             if (chartInstance) {
@@ -2294,6 +2189,7 @@
 
             // Show the modal
             filePreviewModal.show();
+        });
         }
 
         function parseDisruptionTimesFile(content) {
@@ -2650,14 +2546,22 @@
             // Event listener for processing discharges for training
             document.getElementById('processDischargesBtn').addEventListener('click', function () {
                 try {
-                    const payload = { discharges };
+                    const metadata = {
+                        discharges: discharges.map(d => ({ id: d.id, anomalyTime: d.anomalyTime }))
+                    };
+
+                    const formData = new FormData();
+                    formData.append('metadata', JSON.stringify(metadata));
+
+                    discharges.forEach((discharge, idx) => {
+                        discharge.files.forEach(f => {
+                            formData.append(`discharge${idx}`, f.file, f.name);
+                        });
+                    });
 
                     fetch('/api/train/raw', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
+                        body: formData
                     })
                         .then(response => response.json())
                         .then(result => {

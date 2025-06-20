@@ -345,18 +345,21 @@ class OrchestratorService {
    */
   parseSensorFiles(files, anomalyTimes = {}) {
     const signals = [];
-    
+
     for (const file of files) {
       try {
-        const anomalyTime = anomalyTimes[file.name] || null;
-        const sensorData = SensorData.fromTextFile(file.name, file.content, anomalyTime);
+        const name = file.name || file.originalname;
+        const content = file.content || (file.buffer ? file.buffer.toString('utf8') : '');
+        const anomalyTime = anomalyTimes[name] || null;
+        const sensorData = SensorData.fromTextFile(name, content, anomalyTime);
         signals.push(sensorData);
       } catch (error) {
-        logger.error(`Error parsing sensor file ${file.name}: ${error.message}`);
-        throw new Error(`Error parsing sensor file ${file.name}: ${error.message}`);
+        const fname = file.name || file.originalname;
+        logger.error(`Error parsing sensor file ${fname}: ${error.message}`);
+        throw new Error(`Error parsing sensor file ${fname}: ${error.message}`);
       }
     }
-    
+
     return { signals };
   }
 

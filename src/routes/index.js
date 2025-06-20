@@ -1,6 +1,9 @@
 const express = require('express');
+const multer = require('multer');
 const orchestratorController = require('../controllers/orchestrator.controller');
 const { validatedischargealData, validateModelConfig } = require('../middleware/validation.middleware');
+
+const upload = multer();
 const router = express.Router();
 
 // Ruta para realizar predicciones
@@ -8,7 +11,7 @@ router.post('/predict', validatedischargealData, orchestratorController.predict)
 
 // Ruta para entrenamiento de modelos
 router.post('/train', validatedischargealData, orchestratorController.train);
-router.post('/train/raw', orchestratorController.trainRaw);
+router.post('/train/raw', upload.any(), orchestratorController.trainRaw);
 
 // Ruta para verificar la salud de los servicios
 router.get('/health', orchestratorController.health);

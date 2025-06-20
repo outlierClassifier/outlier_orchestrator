@@ -21,7 +21,7 @@ cp .env.example .env
 ## API Endpoints
 
 See [outlier_protocol](https://github.com/outlierClassifier/outlier_protocol) for detailed API specifications.
-The orchestrator also exposes `/api/train/raw` for uploading sensor text files directly. This endpoint parses the files server-side and starts the training session using the outlier node protocol.
+The orchestrator also exposes `/api/train/raw` for uploading sensor text files directly. Use a `multipart/form-data` request where each file field is named `dischargeN` (starting from `discharge0`). A JSON `metadata` field specifies discharge ids and anomaly times. The backend parses the files and starts the training session using the outlier node protocol.
 
 ## Developed with
 
