@@ -648,7 +648,7 @@
                                         <div class="mb-3">
                                             <label for="testDataTextarea" class="form-label">Data (JSON format)</label>
                                             <textarea class="form-control" id="testDataTextarea" rows="8"
-                                                placeholder='{ "signals": [{ "fileName": "sensor1.txt", "times": [41.052, 41.054, ...], "values": [-759337, -760461, ...], "length": 5, "anomalyTime": null }] }'></textarea>
+                                                placeholder='{ "signals": [{ "filename": "sensor1.txt", "times": [41.052, 41.054, ...], "values": [-759337, -760461, ...], "length": 5 }] }'></textarea>
                                         </div>
                                         <div class="d-grid">
                                             <button id="testPredictionBtn" class="btn btn-primary">Predict</button>
@@ -790,7 +790,7 @@
                                             <label for="trainingDataTextarea" class="form-label">Data (JSON
                                                 format)</label>
                                             <textarea class="form-control" id="trainingDataTextarea" rows="8"
-                                                placeholder='{ "signals": [{ "fileName": "sensor1.txt", "times": [41.052, 41.054, ...], "values": [-759337, -760461, ...], "length": 5, "anomalyTime": 41.056 }] }'></textarea>
+                                                placeholder='{ "signals": [{ "filename": "sensor1.txt", "times": [41.052, 41.054, ...], "values": [-759337, -760461, ...], "length": 5 }] }'></textarea>
                                         </div>
                                         <div class="d-grid">
                                             <button id="startTrainingBtn" class="btn btn-warning">Start
@@ -1771,8 +1771,7 @@
                     if (!dischargeGroups[dischargeId]) {
                         dischargeGroups[dischargeId] = {
                             id: dischargeId,
-                            files: [],
-                            commonTimes: null
+                            files: []
                         };
                     }
 
@@ -1811,7 +1810,7 @@
                         signals: []
                     };
 
-                    if (allSameTime && firstFileTimes && firstFileTimes.length > 0) {
+                    if (firstFileTimes && firstFileTimes.length > 0) {
                         discharge.times = firstFileTimes;
                         discharge.length = firstFileTimes.length;
                     }
@@ -1832,16 +1831,10 @@
                         }
 
                         const sensorData = {
-                            fileName: file.name,
+                            filename: file.name,
                             values: values
                         };
-
-                        // If times are not common, include them in the sensor data
-                        if (!allSameTime) {
-                            sensorData.times = times;
-                            sensorData.length = times.length;
-                        }
-
+                    
                         discharge.signals.push(sensorData);
                     });
 
@@ -1890,14 +1883,8 @@
                         signals: []
                     };
 
-                    if (discharge.anomalyTime !== null) {
-                        dischargeData.anomalyTime = discharge.anomalyTime;
-                    }
-
-                    let commonTimes = null;
                     let firstFileTimes = null;
                     let allSameTime = true;
-                    const values = [];
 
                     // Process first all times to check if they are common
                     discharge.files.forEach((file, index) => {
@@ -1923,7 +1910,7 @@
                         }
                     });
 
-                    if (allSameTime && firstFileTimes) {
+                    if (firstFileTimes) {
                         dischargeData.times = firstFileTimes;
                         dischargeData.length = firstFileTimes.length;
                     }
@@ -1933,7 +1920,6 @@
                         try {
                             const lines = file.content.trim().split('\n');
                             const values = [];
-                            let fileTimes = [];
 
                             for (const line of lines) {
                                 const parts = line.trim().split(/\s+/);
@@ -1943,24 +1929,15 @@
 
                                     if (!isNaN(time) && !isNaN(value)) {
                                         // If we don't have common times, store the times per file
-                                        if (!allSameTime) {
-                                            fileTimes.push(time);
-                                        }
-                                        values.push(value);
+                                    values.push(value);
                                     }
                                 }
                             }
 
                             const sensorData = {
-                                fileName: file.name,
+                                filename: file.name,
                                 values: values
                             };
-
-                            // If there are no common times, include the specific times of the file
-                            if (!allSameTime) {
-                                sensorData.times = fileTimes;
-                                sensorData.length = fileTimes.length;
-                            }
 
                             dischargeData.signals.push(sensorData);
 

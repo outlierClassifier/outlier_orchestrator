@@ -39,72 +39,44 @@ function validatedischargealData(req, res, next) {
           error: `La descarga ${discharge.id} debe tener al menos un sensor`
         });
       }
-      
-      // Si tiene tiempos a nivel de descarga, validarlos
-      if (discharge.times) {
-        if (!Array.isArray(discharge.times) || discharge.times.length === 0) {
-          return res.status(StatusCodes.BAD_REQUEST).json({
-            error: `La descarga ${discharge.id} tiene un formato de tiempos inválido`
-          });
-        }
-        
-        // Verificar que todos los valores son numéricos
-        if (discharge.times.some(value => typeof value !== 'number' || isNaN(value))) {
-          return res.status(StatusCodes.BAD_REQUEST).json({
-            error: `La descarga ${discharge.id} tiene valores de tiempo no numéricos`
-          });
-        }
+
+      if (!Array.isArray(discharge.times) || discharge.times.length === 0) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: `La descarga ${discharge.id} debe incluir un array de tiempos`
+        });
       }
-      
+
+      if (discharge.times.some(value => typeof value !== 'number' || isNaN(value))) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: `La descarga ${discharge.id} tiene valores de tiempo no numéricos`
+        });
+      }
+
       // Validar señales
       for (const sensor of discharge.signals) {
         // Verificar nombre de archivo
-        if (!sensor.fileName) {
+        if (!sensor.filename) {
           return res.status(StatusCodes.BAD_REQUEST).json({
             error: `Sensor sin nombre de archivo en descarga ${discharge.id}`
           });
         }
-        
+
         // Verificar valores
         if (!Array.isArray(sensor.values) || sensor.values.length === 0) {
           return res.status(StatusCodes.BAD_REQUEST).json({
-            error: `El sensor ${sensor.fileName} del descarga ${discharge.id} debe tener un array de valores no vacío`
+            error: `El sensor ${sensor.filename} del descarga ${discharge.id} debe tener un array de valores no vacío`
           });
         }
-        
-        // Si el descarga no tiene tiempos comunes, el sensor debe tenerlos
-        if (!discharge.times) {
-          if (!Array.isArray(sensor.times) || sensor.times.length === 0) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-              error: `El sensor ${sensor.fileName} del descarga ${discharge.id} debe tener un array de tiempos cuando no hay tiempos a nivel de descarga`
-            });
-          }
-          
-          if (sensor.times.length !== sensor.values.length) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-              error: `El sensor ${sensor.fileName} del descarga ${discharge.id} tiene diferentes longitudes para tiempos (${sensor.times.length}) y valores (${sensor.values.length})`
-            });
-          }
-          
-          // Verificar que los tiempos son numéricos
-          if (sensor.times.some(value => typeof value !== 'number' || isNaN(value))) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-              error: `El sensor ${sensor.fileName} del descarga ${discharge.id} tiene valores de tiempo no numéricos`
-            });
-          }
-        } else {
-          // Si hay tiempos a nivel de descarga, verificar que las longitudes coincidan
-          if (discharge.times.length !== sensor.values.length) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-              error: `El sensor ${sensor.fileName} del descarga ${discharge.id} tiene una longitud de valores (${sensor.values.length}) que no coincide con la longitud de tiempos del descarga (${discharge.times.length})`
-            });
-          }
+
+        if (discharge.times.length !== sensor.values.length) {
+          return res.status(StatusCodes.BAD_REQUEST).json({
+            error: `El sensor ${sensor.filename} del descarga ${discharge.id} tiene una longitud de valores (${sensor.values.length}) que no coincide con la longitud de tiempos (${discharge.times.length})`
+          });
         }
-        
-        // Verificar que los valores son numéricos
+
         if (sensor.values.some(value => typeof value !== 'number' || isNaN(value))) {
           return res.status(StatusCodes.BAD_REQUEST).json({
-            error: `El sensor ${sensor.fileName} del descarga ${discharge.id} tiene valores no numéricos`
+            error: `El sensor ${sensor.filename} del descarga ${discharge.id} tiene valores no numéricos`
           });
         }
       }

@@ -10,7 +10,7 @@ class SensorData {
    * @param {Number|null} anomalyTime - Tiempo en el que ocurre la anomalía (null si no hay anomalía)
    */
   constructor(fileName, times, values, anomalyTime = null) {
-    this.fileName = fileName;
+    this.filename = fileName;
     this.times = times;
     this.values = values;
     this.length = times.length;
@@ -55,7 +55,7 @@ class SensorData {
    */
   toJSON() {
     return {
-      fileName: this.fileName,
+      filename: this.filename,
       times: this.times,
       values: this.values,
       length: this.length,

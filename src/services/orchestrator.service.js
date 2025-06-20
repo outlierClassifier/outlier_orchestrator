@@ -343,16 +343,24 @@ class OrchestratorService {
    * @param {Object} anomalyTimes - Objeto con los tiempos de anomalía por nombre de archivo
    * @returns {Object} - Objeto con los datos en formato para API
    */
-  parseSensorFiles(files, anomalyTimes = {}) {
+  parseSensorFiles(files) {
     const signals = [];
+    let commonTimes = null;
 
     for (const file of files) {
       try {
         const name = file.name || file.originalname;
         const content = file.content || (file.buffer ? file.buffer.toString('utf8') : '');
-        const anomalyTime = anomalyTimes[name] || null;
-        const sensorData = SensorData.fromTextFile(name, content, anomalyTime);
-        signals.push(sensorData);
+
+        const sensorData = SensorData.fromTextFile(name, content);
+
+        if (!commonTimes) {
+          commonTimes = sensorData.times;
+        } else if (JSON.stringify(commonTimes) !== JSON.stringify(sensorData.times)) {
+          throw new Error(`Time vector mismatch in file ${name}`);
+        }
+
+        signals.push({ filename: sensorData.filename, values: sensorData.values });
       } catch (error) {
         const fname = file.name || file.originalname;
         logger.error(`Error parsing sensor file ${fname}: ${error.message}`);
@@ -360,7 +368,11 @@ class OrchestratorService {
       }
     }
 
-    return { signals };
+    if (!commonTimes) {
+      throw new Error('No signal data found');
+    }
+
+    return { signals, times: commonTimes, length: commonTimes.length };
   }
 
   /**
@@ -375,14 +387,14 @@ class OrchestratorService {
         throw new Error(`Discharge ${d.id || idx} has no files`);
       }
 
-      const { signals } = this.parseSensorFiles(d.files);
-      const discharge = { id: d.id || `discharge_${idx + 1}`, signals };
+      const { signals, times, length } = this.parseSensorFiles(d.files);
 
-      if (d.anomalyTime !== undefined) {
-        discharge.anomalyTime = d.anomalyTime;
-      }
-
-      return discharge;
+      return {
+        id: d.id || `discharge_${idx + 1}`,
+        signals,
+        times,
+        length
+      };
     });
 
     return { discharges };
