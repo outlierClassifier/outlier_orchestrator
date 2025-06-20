@@ -36,7 +36,7 @@ function validatedischargealData(req, res, next) {
       
       if (!discharge.signals || !Array.isArray(discharge.signals) || discharge.signals.length === 0) {
         return res.status(StatusCodes.BAD_REQUEST).json({
-          error: `El descarga ${discharge.id} debe tener al menos un sensor`
+          error: `La descarga ${discharge.id} debe tener al menos un sensor`
         });
       }
       
@@ -44,14 +44,14 @@ function validatedischargealData(req, res, next) {
       if (discharge.times) {
         if (!Array.isArray(discharge.times) || discharge.times.length === 0) {
           return res.status(StatusCodes.BAD_REQUEST).json({
-            error: `El descarga ${discharge.id} tiene un formato de tiempos inválido`
+            error: `La descarga ${discharge.id} tiene un formato de tiempos inválido`
           });
         }
         
         // Verificar que todos los valores son numéricos
         if (discharge.times.some(value => typeof value !== 'number' || isNaN(value))) {
           return res.status(StatusCodes.BAD_REQUEST).json({
-            error: `El descarga ${discharge.id} tiene valores de tiempo no numéricos`
+            error: `La descarga ${discharge.id} tiene valores de tiempo no numéricos`
           });
         }
       }

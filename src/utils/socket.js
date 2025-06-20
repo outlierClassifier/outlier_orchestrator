@@ -7,11 +7,21 @@ const orchestratorService = require('../services/orchestrator.service');
  */
 module.exports = function(io) {
   // Mantener registro del estado de los modelos
-  const modelStatus = {
-    svm: { status: 'unknown', lastCheck: null },
-    lstm: { status: 'unknown', lastCheck: null },
-    xgboost: { status: 'unknown', lastCheck: null }
-  };
+  const modelStatus = {};
+  function syncModelStatusKeys() {
+    // Remove deleted models
+    Object.keys(modelStatus).forEach(name => {
+      if (!orchestratorService.models[name]) delete modelStatus[name];
+    });
+    // Add new models with unknown status
+    Object.keys(orchestratorService.models).forEach(name => {
+      if (!modelStatus[name]) {
+        modelStatus[name] = { status: 'unknown', lastCheck: null };
+      }
+    });
+  }
+
+  syncModelStatusKeys();
 
   // Registro de predicciones realizadas
   const predictionLog = [];
@@ -28,7 +38,9 @@ module.exports = function(io) {
   const healthCheckInterval = setInterval(async () => {
     try {
       const health = await orchestratorService.healthCheck();
-      
+
+      syncModelStatusKeys();
+
       health.models.forEach(model => {
         modelStatus[model.model] = {
           status: model.status,
@@ -54,7 +66,9 @@ module.exports = function(io) {
     socket.on('request-health', async () => {
       try {
         const health = await orchestratorService.healthCheck();
-        
+
+        syncModelStatusKeys();
+
         health.models.forEach(model => {
           modelStatus[model.model] = {
             status: model.status,

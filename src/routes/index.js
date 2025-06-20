@@ -16,5 +16,8 @@ router.get('/health', orchestratorController.health);
 router.get('/config', orchestratorController.getConfig);
 router.post('/config/model', validateModelConfig, orchestratorController.updateModelConfig);
 router.post('/config/url', orchestratorController.updateModelUrl);
+router.post('/config/model/name', orchestratorController.updateModelName);
+router.post('/config/model/add', orchestratorController.addModel);
+router.post('/config/model/delete', orchestratorController.deleteModel);
 
 module.exports = router;

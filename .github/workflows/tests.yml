@@ -1,0 +1,81 @@
+name: Orchestrator integration (reduced dataset)
+
+on:
+  pull_request:
+  push:
+    branches:
+        - '*'
+
+jobs:
+  orchestrator-it:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/outlierclassifier/dataset_reduced:2025-06-15
+      options: --user 0
+
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      DATASET_DIR: /opt/dataset
+      RUSTFLAGS: "-C target-cpu=native"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20 + npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm install
+
+      - uses: actions/checkout@v4
+        with:
+          repository: outlierClassifier/svm
+          path: services/svm
+      - uses: actions/checkout@v4
+        with:
+          repository: outlierClassifier/ocsvm
+          path: services/ocsvm
+
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+      - name: Build SVM & OCSVM (release)
+        run: |
+          cargo build --release --manifest-path services/svm/Cargo.toml
+          cargo build --release --manifest-path services/ocsvm/Cargo.toml
+      
+      - name: Install netcat
+        run: apt-get update && apt-get install -y netcat-openbsd
+      
+      - name: Launch model services
+        run: |
+          ./services/svm/target/release/svm &
+          SVM_PID=$!
+          ./services/ocsvm/target/release/ocsvm &
+          OCSVM_PID=$!
+
+          # Wait until ports are ready 
+          # svm default: 8001 for train & predict, 3001 for health
+          # ocsvm default: 8004 for train & predict, 3002 for health
+          for PORT in 8001 8004 3001 3002; do
+            echo "Esperando a localhost:$PORT..."
+            until nc -z localhost $PORT; do sleep 1; done
+          done
+          
+          echo "SVM_PID=$SVM_PID"   >> $GITHUB_ENV
+          echo "OCSVM_PID=$OCSVM_PID" >> $GITHUB_ENV
+
+      - name: Run orchestrator tests
+        run: npm test
+
+      - name: Shutdown model services
+        if: always()
+        run: |
+          kill -TERM $SVM_PID || true
+          kill -TERM $OCSVM_PID || true

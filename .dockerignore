@@ -1,0 +1,4 @@
+*
+!remuestreados/remuestreados_reduced/**
+!.dockerignore
+!Dockerfile

@@ -141,7 +141,8 @@ class OrchestratorController {
           enabled: config.models[modelName].enabled,
           url: config.models[modelName].url,
           trainingUrl: config.models[modelName].trainingUrl,
-          healthUrl: config.models[modelName].healthUrl
+          healthUrl: config.models[modelName].healthUrl,
+          displayName: config.models[modelName].displayName
         })),
         timeout: config.timeouts.model
       };
@@ -188,7 +189,8 @@ class OrchestratorController {
           enabled: config.models[model].enabled,
           url: config.models[model].url,
           trainingUrl: config.models[model].trainingUrl,
-          healthUrl: config.models[model].healthUrl
+          healthUrl: config.models[model].healthUrl,
+          displayName: config.models[model].displayName
         }))
       });
     } catch (error) {
@@ -239,11 +241,127 @@ class OrchestratorController {
           enabled: config.models[model].enabled,
           url: config.models[model].url,
           trainingUrl: config.models[model].trainingUrl,
-          healthUrl: config.models[model].healthUrl
+          healthUrl: config.models[model].healthUrl,
+          displayName: config.models[model].displayName
         }))
       });
     } catch (error) {
       logger.error(`Error al actualizar URL: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Actualiza el nombre visible de un modelo
+   */
+  async updateModelName(req, res) {
+    try {
+      const { modelName, displayName } = req.body;
+
+      if (!modelName || !displayName) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Se requiere nombre de modelo y nuevo nombre'
+        });
+      }
+
+      if (!config.models[modelName]) {
+        return res.status(StatusCodes.NOT_FOUND).json({
+          error: `Modelo '${modelName}' no encontrado`
+        });
+      }
+
+      config.updateModelDisplayName(modelName, displayName);
+
+      return res.status(StatusCodes.OK).json({
+        message: `Nombre del modelo '${modelName}' actualizado`,
+        models: Object.keys(config.models).map(model => ({
+          name: model,
+          enabled: config.models[model].enabled,
+          url: config.models[model].url,
+          trainingUrl: config.models[model].trainingUrl,
+          healthUrl: config.models[model].healthUrl,
+          displayName: config.models[model].displayName
+        }))
+      });
+    } catch (error) {
+      logger.error(`Error al actualizar nombre: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Agrega un nuevo modelo a la configuración
+   */
+  async addModel(req, res) {
+    try {
+      const { name, url, trainingUrl, healthUrl } = req.body;
+
+      if (!name || !url || !trainingUrl || !healthUrl) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Se requiere nombre y todas las URLs del modelo'
+        });
+      }
+
+      const key = config.addModel(name, { url, trainingUrl, healthUrl });
+
+      return res.status(StatusCodes.OK).json({
+        message: `Modelo '${name}' agregado`,
+        key,
+        models: Object.keys(config.models).map(model => ({
+          name: model,
+          enabled: config.models[model].enabled,
+          url: config.models[model].url,
+          trainingUrl: config.models[model].trainingUrl,
+          healthUrl: config.models[model].healthUrl,
+          displayName: config.models[model].displayName
+        }))
+      });
+    } catch (error) {
+      logger.error(`Error al agregar modelo: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Elimina un modelo de la configuración
+   */
+  async deleteModel(req, res) {
+    try {
+      const { modelName } = req.body;
+
+      if (!modelName) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Se requiere nombre de modelo'
+        });
+      }
+
+      if (!config.models[modelName]) {
+        return res.status(StatusCodes.NOT_FOUND).json({
+          error: `Modelo '${modelName}' no encontrado`
+        });
+      }
+
+      config.removeModel(modelName);
+
+      return res.status(StatusCodes.OK).json({
+        message: `Modelo '${modelName}' eliminado`,
+        models: Object.keys(config.models).map(model => ({
+          name: model,
+          enabled: config.models[model].enabled,
+          url: config.models[model].url,
+          trainingUrl: config.models[model].trainingUrl,
+          healthUrl: config.models[model].healthUrl,
+          displayName: config.models[model].displayName
+        }))
+      });
+    } catch (error) {
+      logger.error(`Error al eliminar modelo: ${error.message}`);
       return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
         error: error.message
       });
