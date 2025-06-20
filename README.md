@@ -1,6 +1,6 @@
 # outlier_orchestrator
 
-This repository implements the orchestrator for our disruption prediction system. Messages are described at the [outlier protocol](https://github.com/outlierClassifier/outlier_protocol).
+This repository implements the orchestrator for our disruption prediction system. Messages are described at the [outlier protocol](https://github.com/outlierClassifier/outlier_protocol). The orchestrator now speaks the **outlier node protocol v0.1.0** when communicating with prediction nodes.
 
 ## Installation
 
@@ -21,6 +21,7 @@ cp .env.example .env
 ## API Endpoints
 
 See [outlier_protocol](https://github.com/outlierClassifier/outlier_protocol) for detailed API specifications.
+The orchestrator also exposes `/api/train/raw` for uploading sensor text files directly. This endpoint parses the files server-side and starts the training session using the outlier node protocol.
 
 ## Developed with
 

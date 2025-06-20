@@ -101,6 +101,38 @@ class OrchestratorController {
   }
 
   /**
+   * Procesa descargas en bruto y las envía a los modelos para entrenamiento
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async trainRaw(req, res) {
+    try {
+      const { discharges } = req.body || {};
+
+      if (!discharges || !Array.isArray(discharges) || discharges.length === 0) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Se requieren descargas con archivos para entrenar'
+        });
+      }
+
+      const parsed = orchestratorService.prepareTrainingData(discharges);
+
+      const result = await orchestratorService.trainModels(parsed);
+
+      return res.status(StatusCodes.OK).json({
+        message: 'Entrenamiento iniciado correctamente',
+        details: result
+      });
+    } catch (error) {
+      logger.error(`Error en entrenamiento raw: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: 'Error al procesar la petición de entrenamiento',
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * Obtiene el estado de salud de los modelos
    * @param {Request} req - Objeto de solicitud HTTP
    * @param {Response} res - Objeto de respuesta HTTP

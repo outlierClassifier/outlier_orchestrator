@@ -2650,14 +2650,14 @@
             // Event listener for processing discharges for training
             document.getElementById('processDischargesBtn').addEventListener('click', function () {
                 try {
-                    const trainingData = processDischargesForTraining();
+                    const payload = { discharges };
 
-                    fetch('/api/train', {
+                    fetch('/api/train/raw', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(trainingData)
+                        body: JSON.stringify(payload)
                     })
                         .then(response => response.json())
                         .then(result => {
