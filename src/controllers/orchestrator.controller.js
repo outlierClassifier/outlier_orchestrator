@@ -36,9 +36,10 @@ class OrchestratorController {
         });
       }
       
+      const label = result.voting.decision === 1 ? 'Anomaly' : 'Normal';
       return res.status(StatusCodes.OK).json({
         message: 'Predicción completada con éxito',
-        class: result.voting.decision,
+        class: label,
         confidence: result.voting.confidence,
         details: result
       });

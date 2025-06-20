@@ -14,39 +14,82 @@ class OrchestratorService {
   }
 
   /**
+   * Inicia una sesión de entrenamiento en un nodo
+   * @param {string} modelName - Nombre del modelo
+   * @param {number} totalDischarges - Cantidad total de descargas
+   * @returns {Promise<Object>} - Respuesta del nodo
+   */
+  async startTrainingSession(modelName, totalDischarges) {
+    const modelConfig = this.models[modelName];
+    const body = {
+      totalDischarges,
+      timeoutSeconds: Math.ceil(this.trainingTimeout / 1000)
+    };
+
+    const response = await axios({
+      method: 'post',
+      url: modelConfig.trainingUrl,
+      data: body,
+      timeout: this.trainingTimeout
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Envía una descarga a un nodo de entrenamiento
+   * @param {string} modelName - Nombre del modelo
+   * @param {number} ordinal - Índice de la descarga (1..N)
+   * @param {Object} discharge - Datos de la descarga
+   * @returns {Promise<Object>} - Acknowledgement
+   */
+  async pushDischarge(modelName, ordinal, discharge) {
+    const modelConfig = this.models[modelName];
+
+    const response = await axios({
+      method: 'post',
+      url: `${modelConfig.trainingUrl}/${ordinal}`,
+      data: discharge,
+      timeout: this.trainingTimeout
+    });
+
+    return response.data;
+  }
+
+  /**
    * Envía los datos a un modelo específico
    * @param {string} modelName - Nombre del modelo
    * @param {Object} data - Datos para la predicción (formato discharges)
    * @returns {Promise} - Promesa con la respuesta del modelo
    */
-  async callModel(modelName, data) {
+  async callModel(modelName, discharge) {
     try {
       const modelConfig = this.models[modelName];
-      
+
       if (!modelConfig || !modelConfig.enabled) {
         logger.warn(`Model ${modelName} is not enabled or does not exist`);
         return { error: `Model ${modelName} is not available`, modelName };
       }
-      
+
       logger.info(`Sending data to ${modelName} model at ${modelConfig.url}`);
-      
+
       const response = await axios({
         method: 'post',
         url: modelConfig.url,
-        data,
+        data: discharge,
         timeout: this.timeout
       });
-      
+
       logger.info(`Received response from ${modelName} model`);
-      return { 
+      return {
         result: response.data,
         modelName,
         status: 'success'
       };
     } catch (error) {
       logger.error(`Error calling ${modelName} model: ${error.message}`);
-      return { 
-        error: error.message, 
+      return {
+        error: error.message,
         modelName,
         status: 'error'
       };
@@ -62,31 +105,40 @@ class OrchestratorService {
   async trainModel(modelName, data) {
     try {
       const modelConfig = this.models[modelName];
-      
+
       if (!modelConfig || !modelConfig.enabled) {
         logger.warn(`Model ${modelName} is not enabled or does not exist for training`);
         return { error: `Model ${modelName} is not available`, modelName };
       }
-      
-      logger.info(`Sending training data to ${modelName} model at ${modelConfig.trainingUrl}`);
-      
-      const response = await axios({
-        method: 'post',
-        url: modelConfig.trainingUrl,
-        data,
-        timeout: this.trainingTimeout
-      });
-      
-      logger.info(`Received training response from ${modelName} model`);
-      return { 
-        result: response.data,
+
+      const total = data.discharges.length;
+      logger.info(`Starting training session on ${modelName} with ${total} discharges`);
+
+      const startResp = await this.startTrainingSession(modelName, total);
+
+      if (startResp.expectedDischarges !== total) {
+        logger.error(`Model ${modelName} expected ${startResp.expectedDischarges} discharges but ${total} were sent`);
+        return {
+          error: 'mismatched discharge count',
+          modelName,
+          status: 'error'
+        };
+      }
+
+      for (let i = 0; i < total; i += 1) {
+        const ordinal = i + 1;
+        await this.pushDischarge(modelName, ordinal, data.discharges[i]);
+      }
+
+      return {
+        result: startResp,
         modelName,
         status: 'success'
       };
     } catch (error) {
       logger.error(`Error training ${modelName} model: ${error.message}`);
-      return { 
-        error: error.message, 
+      return {
+        error: error.message,
         modelName,
         status: 'error'
       };
@@ -119,9 +171,10 @@ class OrchestratorService {
       throw new Error('No models are enabled for prediction');
     }
     
-    // Llamadas en paralelo a todos los modelos
-    const modelPromises = enabledModels.map(model => 
-      this.callModel(model, data)
+    const discharge = data.discharges[0];
+    // Llamadas en paralelo a todos los modelos con el nuevo protocolo
+    const modelPromises = enabledModels.map(model =>
+      this.callModel(model, discharge)
     );
     
     // Esperar todas las respuestas (con timeout)
@@ -217,9 +270,13 @@ class OrchestratorService {
     
     // Procesar votos
     successfulResponses.forEach(response => {
-      const prediction = response.result.prediction;
+      let prediction = response.result.prediction;
       const confidence = response.result.confidence || 1.0;
-      
+
+      if (typeof prediction === 'string') {
+        prediction = prediction === 'Anomaly' ? 1 : 0;
+      }
+
       votes[prediction] += 1;
       confidences[prediction].push(confidence);
     });
