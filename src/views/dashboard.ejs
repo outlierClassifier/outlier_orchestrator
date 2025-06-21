@@ -1025,7 +1025,7 @@
                             </div>
                         </div>
                         <div class="tab-pane fade" id="raw-view" role="tabpanel" aria-labelledby="raw-tab">
-                            < id="filePreviewContent" class="bg-light p-3 rounded"
+                            <pre id="filePreviewContent" class="bg-light p-3 rounded"
                                 style="max-height: 400px; overflow: auto;"></pre>
                         </div>
                     </div>
@@ -1948,10 +1948,10 @@
                 : readFileAsText(fileOrContent);
 
             loadContent.then(content => {
-            // Store reference to any existing chart to destroy it
-            let chartInstance = window.signalChartInstance;
-            if (chartInstance) {
-                chartInstance.destroy();
+                // Store reference to any existing chart to destroy it
+                let chartInstance = window.signalChartInstance;
+                if (chartInstance) {
+                    chartInstance.destroy();
             }
 
             document.getElementById('filePreviewTitle').textContent = fileName;
@@ -2449,9 +2449,8 @@
                     document.getElementById('predictionResult').className = 'alert alert-danger';
                 }
             });
-
-                }
-            });            document.getElementById('configModal').addEventListener('show.bs.modal', function () {
+           
+            document.getElementById('configModal').addEventListener('show.bs.modal', function () {
                 fetch('/api/config')
                     .then(response => response.json())
                     .then(config => {
