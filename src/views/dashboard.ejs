@@ -1732,8 +1732,7 @@
                     if (!dischargeGroups[dischargeId]) {
                         dischargeGroups[dischargeId] = {
                             id: dischargeId,
-                            files: [],
-                            commonTimes: null
+                            files: []
                         };
                     }
 
@@ -1743,7 +1742,6 @@
                 const discharges = [];
 
                 Object.values(dischargeGroups).forEach(group => {
-                    let allSameTime = true;
                     let firstFileTimes = null;
 
                     group.files.forEach((file, index) => {
@@ -1762,46 +1760,31 @@
 
                         if (index === 0) {
                             firstFileTimes = times;
-                        } else if (JSON.stringify(times) !== JSON.stringify(firstFileTimes)) {
-                            allSameTime = false;
                         }
                     });
 
                     const discharge = {
                         id: group.id,
-                        signals: []
+                        signals: [],
+                        times: firstFileTimes,
+                        length: firstFileTimes ? firstFileTimes.length : 0
                     };
-
-                    if (allSameTime && firstFileTimes && firstFileTimes.length > 0) {
-                        discharge.times = firstFileTimes;
-                        discharge.length = firstFileTimes.length;
-                    }
 
                     group.files.forEach(file => {
                         const lines = file.content.trim().split('\n');
                         const values = [];
-                        const times = [];
 
                         for (const line of lines) {
                             const parts = line.trim().split(/\s+/);
                             if (parts.length >= 2) {
-                                if (!allSameTime) {
-                                    times.push(parseFloat(parts[0]));
-                                }
                                 values.push(parseFloat(parts[1]));
                             }
                         }
 
                         const sensorData = {
-                            fileName: file.name,
+                            filename: file.name,
                             values: values
                         };
-
-                        // If times are not common, include them in the sensor data
-                        if (!allSameTime) {
-                            sensorData.times = times;
-                            sensorData.length = times.length;
-                        }
 
                         discharge.signals.push(sensorData);
                     });

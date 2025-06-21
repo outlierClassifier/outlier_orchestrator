@@ -345,22 +345,39 @@ class OrchestratorService {
    */
   parseSensorFiles(files, anomalyTimes = {}) {
     const signals = [];
+    let times = null;
 
-    for (const file of files) {
+    files.forEach((file, index) => {
       try {
         const name = file.name || file.originalname;
         const content = file.content || (file.buffer ? file.buffer.toString('utf8') : '');
         const anomalyTime = anomalyTimes[name] || null;
         const sensorData = SensorData.fromTextFile(name, content, anomalyTime);
-        signals.push(sensorData);
+
+        if (index === 0) {
+          times = sensorData.times;
+        } else if (sensorData.times.length !== times.length) {
+          logger.warn(`Signal ${name} length differs from first signal`);
+        } else {
+          for (let i = 0; i < times.length; i++) {
+            if (sensorData.times[i] !== times[i]) {
+              logger.warn(`Signal ${name} time mismatch at index ${i}`);
+              break;
+            }
+          }
+        }
+
+        signals.push(sensorData.toJSON());
       } catch (error) {
         const fname = file.name || file.originalname;
         logger.error(`Error parsing sensor file ${fname}: ${error.message}`);
         throw new Error(`Error parsing sensor file ${fname}: ${error.message}`);
       }
-    }
+    });
 
-    return { signals };
+    const length = Array.isArray(times) ? times.length : 0;
+
+    return { signals, times, length };
   }
 
   /**
@@ -375,8 +392,13 @@ class OrchestratorService {
         throw new Error(`Discharge ${d.id || idx} has no files`);
       }
 
-      const { signals } = this.parseSensorFiles(d.files);
-      const discharge = { id: d.id || `discharge_${idx + 1}`, signals };
+      const { signals, times, length } = this.parseSensorFiles(d.files);
+      const discharge = {
+        id: String(d.id || `discharge_${idx + 1}`),
+        signals,
+        times,
+        length
+      };
 
       if (d.anomalyTime !== undefined) {
         discharge.anomalyTime = d.anomalyTime;
