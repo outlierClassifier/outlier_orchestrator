@@ -19,34 +19,40 @@ class OrchestratorService {
    * @param {Object} data - Datos para la predicción (formato discharges)
    * @returns {Promise} - Promesa con la respuesta del modelo
    */
-  async callModel(modelName, data) {
+  async callModel(modelName, discharge) {
     try {
       const modelConfig = this.models[modelName];
-      
+
       if (!modelConfig || !modelConfig.enabled) {
         logger.warn(`Model ${modelName} is not enabled or does not exist`);
         return { error: `Model ${modelName} is not available`, modelName };
       }
-      
+
       logger.info(`Sending data to ${modelName} model at ${modelConfig.url}`);
-      
+
       const response = await axios({
         method: 'post',
         url: modelConfig.url,
-        data,
+        data: discharge,
         timeout: this.timeout
       });
-      
+
       logger.info(`Received response from ${modelName} model`);
-      return { 
-        result: response.data,
+
+      let prediction = response.data.prediction;
+      if (typeof prediction === 'string') {
+        prediction = prediction.toLowerCase() === 'anomaly' ? 1 : 0;
+      }
+
+      return {
+        result: { ...response.data, prediction },
         modelName,
         status: 'success'
       };
     } catch (error) {
       logger.error(`Error calling ${modelName} model: ${error.message}`);
-      return { 
-        error: error.message, 
+      return {
+        error: error.message,
         modelName,
         status: 'error'
       };
@@ -62,31 +68,45 @@ class OrchestratorService {
   async trainModel(modelName, data) {
     try {
       const modelConfig = this.models[modelName];
-      
+
       if (!modelConfig || !modelConfig.enabled) {
         logger.warn(`Model ${modelName} is not enabled or does not exist for training`);
         return { error: `Model ${modelName} is not available`, modelName };
       }
-      
-      logger.info(`Sending training data to ${modelName} model at ${modelConfig.trainingUrl}`);
-      
-      const response = await axios({
+
+      const totalDischarges = data.discharges.length;
+      const timeoutSeconds = Math.ceil(this.trainingTimeout / 1000);
+
+      logger.info(`Starting training session on ${modelName} at ${modelConfig.trainingUrl}`);
+
+      const startResponse = await axios({
         method: 'post',
         url: modelConfig.trainingUrl,
-        data,
+        data: { totalDischarges, timeoutSeconds },
         timeout: this.trainingTimeout
       });
-      
-      logger.info(`Received training response from ${modelName} model`);
-      return { 
-        result: response.data,
+
+      logger.info(`Model ${modelName} accepted training session expecting ${startResponse.data.expectedDischarges} discharges`);
+
+      for (let i = 0; i < totalDischarges; i++) {
+        const discharge = data.discharges[i];
+        await axios({
+          method: 'post',
+          url: `${modelConfig.trainingUrl}/${i + 1}`,
+          data: discharge,
+          timeout: this.trainingTimeout
+        });
+      }
+
+      return {
+        result: startResponse.data,
         modelName,
         status: 'success'
       };
     } catch (error) {
       logger.error(`Error training ${modelName} model: ${error.message}`);
-      return { 
-        error: error.message, 
+      return {
+        error: error.message,
         modelName,
         status: 'error'
       };
@@ -119,9 +139,11 @@ class OrchestratorService {
       throw new Error('No models are enabled for prediction');
     }
     
-    // Llamadas en paralelo a todos los modelos
-    const modelPromises = enabledModels.map(model => 
-      this.callModel(model, data)
+    const discharge = data.discharges[0];
+
+    // Llamadas en paralelo a todos los modelos con la nueva estructura
+    const modelPromises = enabledModels.map(model =>
+      this.callModel(model, discharge)
     );
     
     // Esperar todas las respuestas (con timeout)
@@ -323,19 +345,69 @@ class OrchestratorService {
    */
   parseSensorFiles(files, anomalyTimes = {}) {
     const signals = [];
-    
-    for (const file of files) {
+    let times = null;
+
+    files.forEach((file, index) => {
       try {
-        const anomalyTime = anomalyTimes[file.name] || null;
-        const sensorData = SensorData.fromTextFile(file.name, file.content, anomalyTime);
-        signals.push(sensorData);
+        const name = file.name || file.originalname;
+        const content = file.content || (file.buffer ? file.buffer.toString('utf8') : '');
+        const anomalyTime = anomalyTimes[name] || null;
+        const sensorData = SensorData.fromTextFile(name, content, anomalyTime);
+
+        if (index === 0) {
+          times = sensorData.times;
+        } else if (sensorData.times.length !== times.length) {
+          logger.warn(`Signal ${name} length differs from first signal`);
+        } else {
+          for (let i = 0; i < times.length; i++) {
+            if (sensorData.times[i] !== times[i]) {
+              logger.warn(`Signal ${name} time mismatch at index ${i}`);
+              break;
+            }
+          }
+        }
+
+        signals.push(sensorData.toJSON());
       } catch (error) {
-        logger.error(`Error parsing sensor file ${file.name}: ${error.message}`);
-        throw new Error(`Error parsing sensor file ${file.name}: ${error.message}`);
+        const fname = file.name || file.originalname;
+        logger.error(`Error parsing sensor file ${fname}: ${error.message}`);
+        throw new Error(`Error parsing sensor file ${fname}: ${error.message}`);
       }
-    }
-    
-    return { signals };
+    });
+
+    const length = Array.isArray(times) ? times.length : 0;
+
+    return { signals, times, length };
+  }
+
+  /**
+   * Convierte descargas en bruto (con archivos) en el formato
+   * requerido por el protocolo outlier.
+   * @param {Array<Object>} rawDischarges - Descargas con archivos {name, content}
+   * @returns {Object} - Objeto con el arreglo "discharges" procesado
+   */
+  prepareTrainingData(rawDischarges = []) {
+    const discharges = rawDischarges.map((d, idx) => {
+      if (!d.files || d.files.length === 0) {
+        throw new Error(`Discharge ${d.id || idx} has no files`);
+      }
+
+      const { signals, times, length } = this.parseSensorFiles(d.files);
+      const discharge = {
+        id: String(d.id || `discharge_${idx + 1}`),
+        signals,
+        times,
+        length
+      };
+
+      if (d.anomalyTime !== undefined) {
+        discharge.anomalyTime = d.anomalyTime;
+      }
+
+      return discharge;
+    });
+
+    return { discharges };
   }
 }
 
