@@ -12,6 +12,7 @@ router.post('/predict', validatedischargealData, orchestratorController.predict)
 // Ruta para entrenamiento de modelos
 router.post('/train', validatedischargealData, orchestratorController.train);
 router.post('/train/raw', upload.any(), orchestratorController.trainRaw);
+router.post('/trainingCompleted', orchestratorController.trainingCompleted);
 
 // Ruta para verificar la salud de los servicios
 router.get('/health', orchestratorController.health);

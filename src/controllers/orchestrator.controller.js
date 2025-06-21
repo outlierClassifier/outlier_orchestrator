@@ -152,6 +152,31 @@ class OrchestratorController {
   }
 
   /**
+   * Recibe el resumen de entrenamiento de un nodo
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async trainingCompleted(req, res) {
+    try {
+      const data = req.body;
+
+      if (!data || !data.status) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Formato de TrainingResponse inválido'
+        });
+      }
+
+      const entry = orchestratorService.handleTrainingCompleted(data);
+      return res.status(StatusCodes.OK).json({ message: 'Training summary stored', entry });
+    } catch (error) {
+      logger.error(`Error en trainingCompleted: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * Obtiene el estado de salud de los modelos
    * @param {Request} req - Objeto de solicitud HTTP
    * @param {Response} res - Objeto de respuesta HTTP
