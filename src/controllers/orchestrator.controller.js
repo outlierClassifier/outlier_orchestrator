@@ -134,9 +134,7 @@ class OrchestratorController {
         }
       }
 
-      const parsed = orchestratorService.prepareTrainingData(discharges);
-
-      const result = await orchestratorService.trainModels(parsed);
+      const result = await orchestratorService.trainModels({ discharges });
 
       return res.status(StatusCodes.OK).json({
         message: 'Entrenamiento iniciado correctamente',
