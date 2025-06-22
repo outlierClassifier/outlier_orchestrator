@@ -11,6 +11,8 @@ class OrchestratorService {
     this.models = config.models;
     this.timeout = config.timeouts.model;
     this.trainingTimeout = config.timeouts.training;
+    // In-memory storage for training results
+    this.trainingSummaries = [];
   }
 
   /**
@@ -335,6 +337,41 @@ class OrchestratorService {
       models: results,
       availableModels: results.filter(m => m.available).length
     };
+  }
+
+  /**
+   * Procesa la respuesta de entrenamiento enviada por un nodo
+   * y almacena un resumen en memoria para consultas posteriores.
+   * @param {Object} data - Objeto con la estructura TrainingResponse
+   * @returns {Object} - Resultado almacenado con timestamp
+   */
+  handleTrainingCompleted(data = {}) {
+    if (!data || typeof data !== 'object' || !data.status) {
+      throw new Error('Invalid TrainingResponse');
+    }
+
+    const entry = {
+      timestamp: new Date(),
+      ...data
+    };
+
+    this.trainingSummaries.push(entry);
+
+    // keep last 100 summaries to avoid uncontrolled growth
+    if (this.trainingSummaries.length > 100) {
+      this.trainingSummaries.shift();
+    }
+
+    logger.info(`Stored training summary with status ${data.status}`);
+    return entry;
+  }
+
+  /**
+   * Devuelve los resúmenes de entrenamiento almacenados
+   * @returns {Array<Object>}
+   */
+  getTrainingSummaries() {
+    return this.trainingSummaries;
   }
 
   /**
