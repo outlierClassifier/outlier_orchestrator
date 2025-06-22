@@ -67,7 +67,7 @@ class OrchestratorService {
    * @param {Object} data - Datos para entrenamiento (formato discharges)
    * @returns {Promise} - Promesa con la respuesta del modelo
    */
-  async trainModel(modelName, data) {
+  async trainModel(modelName, dischargeStream, totalDischarges) {
     try {
       const modelConfig = this.models[modelName];
 
@@ -76,7 +76,6 @@ class OrchestratorService {
         return { error: `Model ${modelName} is not available`, modelName };
       }
 
-      const totalDischarges = data.discharges.length;
       const timeoutSeconds = Math.ceil(this.trainingTimeout / 1000);
 
       logger.info(`Starting training session on ${modelName} at ${modelConfig.trainingUrl}`);
@@ -90,14 +89,25 @@ class OrchestratorService {
 
       logger.info(`Model ${modelName} accepted training session expecting ${startResponse.data.expectedDischarges} discharges`);
 
-      for (let i = 0; i < totalDischarges; i++) {
-        const discharge = data.discharges[i];
+      let index = 0;
+      for await (const discharge of dischargeStream) {
         await axios({
           method: 'post',
-          url: `${modelConfig.trainingUrl}/${i + 1}`,
+          url: `${modelConfig.trainingUrl}/${index + 1}`,
           data: discharge,
           timeout: this.trainingTimeout
         });
+
+        // release arrays to free memory
+        if (discharge.signals) {
+          for (const s of discharge.signals) {
+            s.values = null;
+          }
+          discharge.signals = null;
+        }
+        discharge.times = null;
+
+        index += 1;
       }
 
       return {
@@ -186,10 +196,13 @@ class OrchestratorService {
       throw new Error('No models are enabled for training');
     }
     
+    const totalDischarges = data.discharges.length;
+
     // Llamadas en paralelo a todos los modelos para entrenamiento
-    const trainingPromises = enabledModels.map(model => 
-      this.trainModel(model, data)
-    );
+    const trainingPromises = enabledModels.map(model => {
+      const stream = this.prepareTrainingStream(data.discharges);
+      return this.trainModel(model, stream, totalDischarges);
+    });
     
     // Esperar todas las respuestas
     const responses = await Promise.all(trainingPromises);
@@ -418,33 +431,45 @@ class OrchestratorService {
   }
 
   /**
-   * Convierte descargas en bruto (con archivos) en el formato
+   * Genera de forma perezosa las descargas procesadas en formato
    * requerido por el protocolo outlier.
-   * @param {Array<Object>} rawDischarges - Descargas con archivos {name, content}
-   * @returns {Object} - Objeto con el arreglo "discharges" procesado
+   *
+   * @param {Array<Object>} rawDischarges - Descargas con archivos o ya procesadas
+   * @returns {AsyncGenerator<Object>} - Generador que produce una descarga por vez
    */
-  prepareTrainingData(rawDischarges = []) {
-    const discharges = rawDischarges.map((d, idx) => {
-      if (!d.files || d.files.length === 0) {
-        throw new Error(`Discharge ${d.id || idx} has no files`);
-      }
+  async *prepareTrainingStream(rawDischarges = []) {
+    for (let idx = 0; idx < rawDischarges.length; idx++) {
+      const d = rawDischarges[idx];
 
-      const { signals, times, length } = this.parseSensorFiles(d.files);
-      const discharge = {
-        id: String(d.id || `discharge_${idx + 1}`),
-        signals,
-        times,
-        length
-      };
+      let discharge;
+      if (d.files) {
+        if (!d.files.length) {
+          throw new Error(`Discharge ${d.id || idx} has no files`);
+        }
+        const { signals, times, length } = this.parseSensorFiles(d.files);
+        discharge = {
+          id: String(d.id || `discharge_${idx + 1}`),
+          signals,
+          times,
+          length
+        };
+      } else if (d.signals && d.times) {
+        discharge = {
+          id: String(d.id || `discharge_${idx + 1}`),
+          signals: d.signals,
+          times: d.times,
+          length: d.length || d.times.length
+        };
+      } else {
+        throw new Error(`Discharge ${d.id || idx} has no files or signals`);
+      }
 
       if (d.anomalyTime !== undefined) {
         discharge.anomalyTime = d.anomalyTime;
       }
 
-      return discharge;
-    });
-
-    return { discharges };
+      yield discharge;
+    }
   }
 }
 
