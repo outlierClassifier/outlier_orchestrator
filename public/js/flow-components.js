@@ -1,5 +1,5 @@
 // Modern React Flow Components for Dark Theme Flow Studio
-const { useState, useCallback, useEffect, useRef } = React;
+const { useState, useCallback, useEffect, useRef, useMemo } = React;
 const { ReactFlow, addEdge, applyEdgeChanges, applyNodeChanges, Background, Controls, MiniMap, Handle, Position } = window.ReactFlow;
 
 // Create a global model status store that all nodes can share
@@ -45,7 +45,7 @@ if (window.socket && !window.modelStatusInitialized) {
     window.modelStatusInitialized = true;
 }
 
-const ModelNode = ({ data, selected }) => {
+const ModelNode = React.memo(({ data, selected }) => {
     const { modelName, enabled, status, modelType } = data;
     const [actualStatus, setActualStatus] = useState('disabled');
     const [isOnline, setIsOnline] = useState(false);
@@ -228,10 +228,10 @@ const ModelNode = ({ data, selected }) => {
             }
         })
     ]);
-};
+});
 
 // Enhanced File Upload Node
-const FileUploadNode = ({ data, selected }) => {
+const FileUploadNode = React.memo(({ data, selected }) => {
     const fileInputRef = useRef(null);
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [isDragging, setIsDragging] = useState(false);
@@ -372,10 +372,10 @@ const FileUploadNode = ({ data, selected }) => {
             }
         })
     ]);
-};
+});
 
 // Enhanced Output Node
-const OutputNode = ({ data, selected }) => {
+const OutputNode = React.memo(({ data, selected }) => {
     const [results, setResults] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -501,7 +501,7 @@ const OutputNode = ({ data, selected }) => {
             }, `${Object.keys(results).length} items processed`)
         ])
     ]);
-};
+});
 
 // Main Flow Canvas Component
 const FlowCanvas = ({ mode, models, onInstanceReady }) => {
@@ -510,11 +510,11 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
     const [reactFlowInstance, setReactFlowInstance] = useState(null);
     const reactFlowWrapper = useRef(null);
 
-    const nodeTypes = {
+    const nodeTypes = useMemo(() => ({
         modelNode: ModelNode,
         fileUploadNode: FileUploadNode,
         outputNode: OutputNode
-    };
+    }), []);
 
     useEffect(() => {
         initializeDefaultNodes();
@@ -526,7 +526,7 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
         }
     }, [reactFlowInstance, onInstanceReady]);
 
-    const initializeDefaultNodes = () => {
+    const initializeDefaultNodes = useCallback(() => {
         const fileNode = {
             id: 'file-input',
             type: 'fileUploadNode',
@@ -549,14 +549,14 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
 
         setNodes([fileNode, outputNode]);
         setEdges([]);
-    };
+    }, [mode]);
 
-    const handleFilesUploaded = (files) => {
+    const handleFilesUploaded = useCallback((files) => {
         console.log('Files uploaded:', files);
         window.uploadedFiles = files;
-    };
+    }, []);
 
-    const handleOutputClick = async () => {
+    const handleOutputClick = useCallback(async () => {
         const connectedModels = getConnectedModels();
         const files = window.uploadedFiles || [];
         
@@ -580,9 +580,9 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
             console.error('Processing error:', error);
             throw error;
         }
-    };
+    }, [mode, nodes, edges]);
 
-    const getConnectedModels = () => {
+    const getConnectedModels = useCallback(() => {
         const modelNodes = nodes.filter(node => node.type === 'modelNode');
         const connectedModelIds = new Set();
         
@@ -599,9 +599,9 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
             const node = nodes.find(n => n.id === id);
             return node ? node.data : null;
         }).filter(Boolean);
-    };
+    }, [nodes, edges]);
 
-    const processPrediction = async (files, models) => {
+    const processPrediction = useCallback(async (files, models) => {
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
         
@@ -611,9 +611,9 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
         });
         
         return await response.json();
-    };
+    }, []);
 
-    const processTraining = async (files, models) => {
+    const processTraining = useCallback(async (files, models) => {
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
         
@@ -623,7 +623,7 @@ const FlowCanvas = ({ mode, models, onInstanceReady }) => {
         });
         
         return await response.json();
-    };
+    }, []);
 
     const onNodesChange = useCallback(
         (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
