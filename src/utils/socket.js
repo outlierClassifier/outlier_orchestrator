@@ -86,7 +86,11 @@ module.exports = function(io) {
     // Manejar solicitud de predicción manual desde el dashboard
     socket.on('run-prediction', async (data) => {
       try {
-        const result = await orchestratorService.orchestrate(data);
+        let payload = data;
+        if (data && Array.isArray(data.files)) {
+          payload = orchestratorService.parsePredictionFiles(data.files);
+        }
+        const result = await orchestratorService.orchestrate(payload);
         
         const predictionRecord = {
           timestamp: new Date(),

@@ -1714,89 +1714,6 @@
             document.getElementById('processMultipleDischargesBtn').disabled = true;
         }
 
-        // Process signal files to create the appropriate JSON format
-        function processSignalFiles(files) {
-            try {
-                // Group files by discharge (extract discharge ID from the file name)
-                const dischargeGroups = {};
-
-                files.forEach(file => {
-                    // Attempt to extract discharge ID from the file name
-                    let dischargeId = "unknown";
-                    const match = file.name.match(/DES_(\d+)/i);
-                    if (match && match[1]) {
-                        dischargeId = match[1];
-                    }
-
-                    // Create group if it doesn't exist
-                    if (!dischargeGroups[dischargeId]) {
-                        dischargeGroups[dischargeId] = {
-                            id: dischargeId,
-                            files: []
-                        };
-                    }
-
-                    dischargeGroups[dischargeId].files.push(file);
-                });
-
-                const discharges = [];
-
-                Object.values(dischargeGroups).forEach(group => {
-                    let firstFileTimes = null;
-
-                    group.files.forEach((file, index) => {
-                        const lines = file.content.trim().split('\n');
-                        const times = [];
-
-                        for (const line of lines) {
-                            const parts = line.trim().split(/\s+/);
-                            if (parts.length >= 2) {
-                                const time = parseFloat(parts[0]);
-                                if (!isNaN(time)) {
-                                    times.push(time);
-                                }
-                            }
-                        }
-
-                        if (index === 0) {
-                            firstFileTimes = times;
-                        }
-                    });
-
-                    const discharge = {
-                        id: group.id,
-                        signals: [],
-                        times: firstFileTimes,
-                        length: firstFileTimes ? firstFileTimes.length : 0
-                    };
-
-                    group.files.forEach(file => {
-                        const lines = file.content.trim().split('\n');
-                        const values = [];
-
-                        for (const line of lines) {
-                            const parts = line.trim().split(/\s+/);
-                            if (parts.length >= 2) {
-                                values.push(parseFloat(parts[1]));
-                            }
-                        }
-
-                        const sensorData = {
-                            filename: file.name,
-                            values: values
-                        };
-
-                        discharge.signals.push(sensorData);
-                    });
-
-                    discharges.push(discharge);
-                });
-
-                return { discharges };
-
-            } catch (error) {
-                throw new Error(`Error processing file: ${error.message}`);
-            }
         }
 
         // Process each discharge for training
@@ -2295,9 +2212,7 @@
 
             document.getElementById('processSensorFilesBtn').addEventListener('click', function () {
                 try {
-                    const processedData = processSignalFiles(sensorFiles);
-
-                    socket.emit('run-prediction', processedData);
+                    socket.emit('run-prediction', { files: sensorFiles });
 
                     document.getElementById('predictionResultContainer').style.display = 'block';
                     document.getElementById('predictionResult').innerHTML = `
@@ -2309,7 +2224,6 @@
                         </div>
                     `;
                     document.getElementById('predictionResult').className = 'alert';
-                    console.log('Processed data:', processedData);
                 } catch (error) {
                     console.error('Error processing sensor files:', error);
                     document.getElementById('predictionResultContainer').style.display = 'block';

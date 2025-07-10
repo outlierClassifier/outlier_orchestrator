@@ -431,6 +431,86 @@ class OrchestratorService {
   }
 
   /**
+   * Procesa archivos de texto de señales para predicción.
+   * Replica la lógica utilizada previamente en el frontend.
+   * @param {Array<Object>} files - Array de objetos con {name, content}
+   * @returns {Object} Objeto con la estructura { discharges }
+   */
+  parsePredictionFiles(files = []) {
+    const dischargeGroups = {};
+
+    files.forEach(file => {
+      const name = file.name || file.originalname;
+      const content = file.content || (file.buffer ? file.buffer.toString('utf8') : '');
+
+      let dischargeId = 'unknown';
+      const match = name.match(/DES_(\d+)/i);
+      if (match && match[1]) {
+        dischargeId = match[1];
+      }
+
+      if (!dischargeGroups[dischargeId]) {
+        dischargeGroups[dischargeId] = { id: dischargeId, files: [] };
+      }
+
+      dischargeGroups[dischargeId].files.push({ name, content });
+    });
+
+    const discharges = [];
+
+    Object.values(dischargeGroups).forEach(group => {
+      let firstFileTimes = null;
+
+      group.files.forEach((file, index) => {
+        const lines = file.content.trim().split('\n');
+        const times = [];
+
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            const time = parseFloat(parts[0]);
+            if (!isNaN(time)) {
+              times.push(time);
+            }
+          }
+        }
+
+        if (index === 0) {
+          firstFileTimes = times;
+        }
+      });
+
+      const discharge = {
+        id: group.id,
+        signals: [],
+        times: firstFileTimes,
+        length: firstFileTimes ? firstFileTimes.length : 0
+      };
+
+      group.files.forEach(file => {
+        const lines = file.content.trim().split('\n');
+        const values = [];
+
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            const value = parseFloat(parts[1]);
+            if (!isNaN(value)) {
+              values.push(value);
+            }
+          }
+        }
+
+        discharge.signals.push({ filename: file.name, values });
+      });
+
+      discharges.push(discharge);
+    });
+
+    return { discharges };
+  }
+
+  /**
    * Genera de forma perezosa las descargas procesadas en formato
    * requerido por el protocolo outlier.
    *
