@@ -37,6 +37,11 @@ app.get('/', (req, res) => {
   res.render('dashboard');
 });
 
+// React Flow dashboard
+app.get('/flow', (req, res) => {
+  res.render('dashboard_react');
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   logger.error(`${err.status || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);

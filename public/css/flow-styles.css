@@ -1,0 +1,184 @@
+/* React Flow Custom Styles */
+.flow-container {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.model-node {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.model-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+.model-node.selected {
+    transform: translateY(-2px);
+}
+
+.file-upload-node {
+    transition: all 0.2s ease;
+}
+
+.file-upload-node:hover {
+    border-color: #0066cc !important;
+    background-color: #e7f3ff !important;
+    transform: translateY(-2px);
+}
+
+.output-node {
+    transition: all 0.2s ease;
+}
+
+.output-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3) !important;
+}
+
+.model-palette {
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.model-palette-item {
+    transition: all 0.2s ease;
+}
+
+.model-palette-item:hover {
+    background-color: #cce7ff !important;
+    transform: translateX(4px);
+}
+
+.model-palette-item:active {
+    transform: scale(0.95);
+}
+
+/* React Flow override styles */
+.react-flow__node {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+}
+
+.react-flow__handle {
+    width: 8px !important;
+    height: 8px !important;
+    border: 2px solid white !important;
+    border-radius: 50% !important;
+}
+
+.react-flow__edge {
+    stroke: #6c757d !important;
+    stroke-width: 2px !important;
+}
+
+.react-flow__edge.selected {
+    stroke: #0066cc !important;
+    stroke-width: 3px !important;
+}
+
+.react-flow__edge-path {
+    stroke: inherit !important;
+    stroke-width: inherit !important;
+}
+
+.react-flow__connection-line {
+    stroke: #0066cc !important;
+    stroke-width: 2px !important;
+    stroke-dasharray: 5,5 !important;
+}
+
+.react-flow__controls {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+}
+
+.react-flow__controls-button {
+    background: white !important;
+    border: 1px solid #dee2e6 !important;
+    color: #6c757d !important;
+}
+
+.react-flow__controls-button:hover {
+    background: #f8f9fa !important;
+    color: #0066cc !important;
+}
+
+.react-flow__minimap {
+    background: white !important;
+    border: 1px solid #dee2e6 !important;
+    border-radius: 4px !important;
+}
+
+/* Tab content specific styles */
+.tab-pane {
+    min-height: 500px;
+}
+
+/* Loading and status indicators */
+.processing-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .model-palette {
+        position: relative !important;
+        width: 100% !important;
+        top: 0 !important;
+        right: 0 !important;
+        margin-bottom: 10px;
+    }
+    
+    .flow-container {
+        height: 400px !important;
+    }
+}
+
+/* Preview tab styles */
+.preview-container {
+    padding: 20px;
+}
+
+.preview-item {
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.preview-item h6 {
+    margin-bottom: 10px;
+    color: #495057;
+}
+
+.preview-data {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+    max-height: 200px;
+    overflow-y: auto;
+}
