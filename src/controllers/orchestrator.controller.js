@@ -75,14 +75,18 @@ class OrchestratorController {
       }
       
       logger.info(`Recibida petición de entrenamiento con ${trainingData.discharges.length} descargas`);
-      
+
       try {
-        // Enviar datos de entrenamiento a todos los modelos
-        const result = await orchestratorService.trainModels(trainingData);
-        
+        let summary;
+        if (!orchestratorService.trainingSession) {
+          const total = trainingData.totalDischarges || trainingData.discharges.length;
+          summary = await orchestratorService.startTrainingSession(total);
+        }
+        await orchestratorService.sendTrainingBatch(trainingData.discharges);
+
         return res.status(StatusCodes.OK).json({
-          message: 'Entrenamiento iniciado correctamente',
-          details: result
+          message: 'Entrenamiento batch procesado correctamente',
+          details: summary
         });
       } catch (error) {
         logger.error(`Error al enviar datos a modelos: ${error.message}`);
@@ -134,11 +138,17 @@ class OrchestratorController {
         }
       }
 
-      const result = await orchestratorService.trainModels({ discharges });
+      let summary;
+      if (!orchestratorService.trainingSession) {
+        const total = meta.totalDischarges || discharges.length;
+        summary = await orchestratorService.startTrainingSession(total);
+      }
+
+      await orchestratorService.sendTrainingBatch(discharges);
 
       return res.status(StatusCodes.OK).json({
-        message: 'Entrenamiento iniciado correctamente',
-        details: result
+        message: 'Entrenamiento batch procesado correctamente',
+        details: summary
       });
     } catch (error) {
       logger.error(`Error en entrenamiento raw: ${error.message}`);
