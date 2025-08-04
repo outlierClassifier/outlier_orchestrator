@@ -13,6 +13,28 @@ class OrchestratorService {
     this.trainingTimeout = config.timeouts.training;
     // In-memory storage for training results
     this.trainingSummaries = [];
+    // Estado de entrenamiento actual para manejo por lotes
+    this.trainingSession = null;
+  }
+
+  /**
+   * Helper that retries axios POST requests on network failures
+   * @param {Object} config - Axios request configuration
+   * @param {number} delayMs - Delay between retries in milliseconds
+   */
+  async postWithRetry(config, delayMs = 500) {
+    while (true) {
+      try {
+        return await axios(config);
+      } catch (error) {
+        if (error.message && error.message.includes('Network Error')) {
+          logger.warn(`Network error when calling ${config.url}. Retrying in ${delayMs}ms`);
+          await new Promise(res => setTimeout(res, delayMs));
+          continue;
+        }
+        throw error;
+      }
+    }
   }
 
   /**
@@ -126,6 +148,140 @@ class OrchestratorService {
   }
 
   /**
+   * Inicia una sesión de entrenamiento con todos los modelos habilitados
+   * y almacena el estado para el envío por lotes.
+   * @param {number} totalDischarges - Total de descargas a enviar en toda la sesión
+   * @returns {Object} Resumen de los modelos que aceptaron el entrenamiento
+   */
+  async startTrainingSession(totalDischarges) {
+    const enabledModels = Object.keys(this.models)
+      .filter(model => this.models[model].enabled);
+
+    logger.info(`Enabled models for training: ${enabledModels.join(', ')}`);
+
+    if (enabledModels.length === 0) {
+      logger.error('No models are enabled');
+      throw new Error('No models are enabled for training');
+    }
+
+    const timeoutSeconds = Math.ceil(this.trainingTimeout / 1000);
+    const sessionModels = {};
+    const details = [];
+    let successful = 0;
+
+    for (const modelName of enabledModels) {
+      const modelConfig = this.models[modelName];
+      try {
+        await this.postWithRetry({
+          method: 'post',
+          url: modelConfig.trainingUrl,
+          data: { totalDischarges, timeoutSeconds },
+          timeout: this.trainingTimeout
+        });
+        sessionModels[modelName] = {
+          trainingUrl: modelConfig.trainingUrl,
+          queue: [],
+          sending: false
+        };
+        details.push({ modelName, status: 'success' });
+        successful += 1;
+      } catch (error) {
+        logger.error(`Error starting training for ${modelName}: ${error.message}`);
+        details.push({ modelName, status: 'error', error: error.message });
+      }
+    }
+
+    this.trainingSession = {
+      totalDischarges,
+      queued: 0,
+      processed: 0,
+      models: sessionModels
+    };
+
+    return {
+      successful,
+      failed: details.length - successful,
+      details
+    };
+  }
+
+  /**
+   * Envía un lote de descargas a los modelos dentro de la sesión activa
+   * @param {Array<Object>} rawDischarges - Descargas del lote
+   */
+  async sendTrainingBatch(rawDischarges = []) {
+    if (!this.trainingSession) {
+      throw new Error('No training session started');
+    }
+
+    const stream = this.prepareTrainingStream(rawDischarges);
+    const modelNames = Object.keys(this.trainingSession.models);
+    for await (const discharge of stream) {
+      const seq = this.trainingSession.queued + 1;
+      const container = { discharge, seq, remaining: modelNames.length };
+
+      for (const modelName of modelNames) {
+        const model = this.trainingSession.models[modelName];
+        model.queue.push(container);
+        if (!model.sending) {
+          this.processModelQueue(modelName).catch(err => logger.error(err.message));
+        }
+      }
+
+      this.trainingSession.queued += 1;
+    }
+  }
+
+  /**
+   * Procesa la cola de entrenamiento para un modelo específico
+   * @param {string} modelName
+   */
+  async processModelQueue(modelName) {
+    const model = this.trainingSession.models[modelName];
+    if (!model || model.sending) return;
+    model.sending = true;
+
+    while (model.queue.length > 0) {
+      const item = model.queue[0];
+      try {
+        await this.postWithRetry({
+          method: 'post',
+          url: `${model.trainingUrl}/${item.seq}`,
+          data: item.discharge,
+          timeout: this.trainingTimeout
+        });
+      } catch (error) {
+        logger.error(`Error sending discharge ${item.seq} to ${modelName}: ${error.message}`);
+      }
+
+      model.queue.shift();
+      item.remaining -= 1;
+      if (item.remaining === 0) {
+        if (item.discharge.signals) {
+          for (const s of item.discharge.signals) {
+            s.values = null;
+          }
+          item.discharge.signals = null;
+        }
+        item.discharge.times = null;
+        this.trainingSession.processed += 1;
+        if (this.trainingSession.processed >= this.trainingSession.totalDischarges) {
+          this.finishTraining();
+        }
+      }
+    }
+
+    model.sending = false;
+  }
+
+  /**
+   * Finaliza la sesión de entrenamiento actual
+   */
+  finishTraining() {
+    this.trainingSession = null;
+  }
+
+  /**
    * Distribuye los datos a todos los modelos habilitados
    * @param {Object} data - Datos para la predicción (formato discharges)
    * @returns {Promise<Object>} - Resultados de todos los modelos y votación final
@@ -177,44 +333,22 @@ class OrchestratorService {
    */
   async trainModels(data) {
     logger.info('Starting training process for all models');
-    
+
     // Validar formato de datos
     if (!data.discharges || !Array.isArray(data.discharges)) {
       logger.error('Formato de datos inválido: se espera un objeto con array "discharges"');
       throw new Error('Formato de datos inválido: se espera un objeto con array "discharges"');
     }
-    
-    logger.info(`Procesando entrenamiento con ${data.discharges.length} descargas`);
-    
-    const enabledModels = Object.keys(this.models)
-      .filter(model => this.models[model].enabled);
-    
-    logger.info(`Enabled models for training: ${enabledModels.join(', ')}`);
-    
-    if (enabledModels.length === 0) {
-      logger.error('No models are enabled');
-      throw new Error('No models are enabled for training');
-    }
-    
-    const totalDischarges = data.discharges.length;
 
-    // Llamadas en paralelo a todos los modelos para entrenamiento
-    const trainingPromises = enabledModels.map(model => {
-      const stream = this.prepareTrainingStream(data.discharges);
-      return this.trainModel(model, stream, totalDischarges);
-    });
-    
-    // Esperar todas las respuestas
-    const responses = await Promise.all(trainingPromises);
-    
-    const summary = {
-      successful: responses.filter(r => r.status === 'success').length,
-      failed: responses.filter(r => r.status === 'error').length,
-      details: responses
-    };
-    
+    logger.info(`Procesando entrenamiento con ${data.discharges.length} descargas`);
+
+    const totalDischarges = data.discharges.length;
+    const summary = await this.startTrainingSession(totalDischarges);
+    await this.sendTrainingBatch(data.discharges);
+    this.finishTraining();
+
     logger.info(`Training completed: ${summary.successful} successful, ${summary.failed} failed`);
-    
+
     return summary;
   }
 
