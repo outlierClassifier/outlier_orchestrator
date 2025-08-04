@@ -38,6 +38,24 @@ describe('batch training session', () => {
     expect(axios.mock.calls[2][0].url).toBe('http://localhost:9999/train/2');
   });
 
+  test('continues sending when a new batch arrives during flush', async () => {
+    axios.mockResolvedValue({ data: { expectedDischarges: 2 } });
+
+    await orchestratorService.startTrainingSession(2);
+
+    orchestratorService.sendTrainingBatch([
+      { id: 'd1', signals: [{ values: [1] }], times: [0], length: 1 }
+    ]);
+    await new Promise(r => setImmediate(r));
+    orchestratorService.sendTrainingBatch([
+      { id: 'd2', signals: [{ values: [2] }], times: [0], length: 1 }
+    ]);
+    await new Promise(r => setTimeout(r, 0));
+
+    expect(axios).toHaveBeenCalledTimes(3);
+    expect(axios.mock.calls[2][0].url).toBe('http://localhost:9999/train/2');
+  });
+
   test('ignores duplicate discharges when retrying', async () => {
     axios.mockResolvedValue({ data: { expectedDischarges: 2 } });
 

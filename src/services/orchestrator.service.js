@@ -296,7 +296,10 @@ class OrchestratorService {
     }
 
     model.sending = false;
-    if (this.trainingSession.finished && this.allQueuesEmpty()) {
+    if (model.queue.length > 0) {
+      // New discharges arrived while we were flushing the queue
+      this.processQueue(modelName);
+    } else if (this.trainingSession.finished && this.allQueuesEmpty()) {
       this.trainingSession = null;
     }
   }
