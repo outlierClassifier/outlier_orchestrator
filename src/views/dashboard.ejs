@@ -2364,48 +2364,10 @@
             });
 
             // Event listener for processing discharges for training
-            document.getElementById('processDischargesBtn').addEventListener('click', function () {
+            document.getElementById('processDischargesBtn').addEventListener('click', async function () {
                 try {
-                    const metadata = {
-                        discharges: discharges.map(d => ({ id: d.id, anomalyTime: d.anomalyTime }))
-                    };
-
-                    const formData = new FormData();
-                    formData.append('metadata', JSON.stringify(metadata));
-
-                    discharges.forEach((discharge, idx) => {
-                        discharge.files.forEach(f => {
-                            formData.append(`discharge${idx}`, f.file, f.name);
-                        });
-                    });
-
-                    fetch('/api/train/raw', {
-                        method: 'POST',
-                        body: formData
-                    })
-                        .then(response => response.json())
-                        .then(result => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
-
-                            if (result.error) {
-                                document.getElementById('trainingResult').className = 'alert alert-danger';
-                                document.getElementById('trainingResult').innerHTML = `Error: ${result.error}`;
-                            } else {
-                                document.getElementById('trainingResult').className = 'alert alert-success';
-                                document.getElementById('trainingResult').innerHTML = `
-                                <h5>Entrenamiento iniciado</h5>
-                                <p>${result.message}</p>
-                                <p>Modelos exitosos: ${result.details.successful}</p>
-                                <p>Modelos fallidos: ${result.details.failed}</p>
-                                <p>Consulte los logs para más detalles.</p>
-                            `;
-                            }
-                        })
-                        .catch(error => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
-                            document.getElementById('trainingResult').className = 'alert alert-danger';
-                            document.getElementById('trainingResult').innerHTML = `Error sending training data: ${error.message}`;
-                        });
+                    const total = discharges.length;
+                    let firstResult = null;
 
                     document.getElementById('trainingResultContainer').style.display = 'block';
                     document.getElementById('trainingResult').innerHTML = `
@@ -2414,15 +2376,67 @@
                                 <span class="visually-hidden">Loading...</span>
                             </div>
                             <p class="mt-2">Sending training data...</p>
-                        </div>
-                    `;
+                        </div>`;
                     document.getElementById('trainingResult').className = 'alert';
+
+                    for (let start = 0; start < discharges.length; start += 10) {
+                        const batch = discharges.slice(start, start + 10);
+                        const metadata = {
+                            totalDischarges: total,
+                            discharges: batch.map(d => ({ id: d.id, anomalyTime: d.anomalyTime }))
+                        };
+
+                        const formData = new FormData();
+                        formData.append('metadata', JSON.stringify(metadata));
+
+                        batch.forEach((discharge, idx) => {
+                            discharge.files.forEach(f => {
+                                formData.append(`discharge${idx}`, f.file, f.name);
+                            });
+                        });
+
+                        const result = await sendTrainingBatch(formData);
+                        if (!firstResult) {
+                            firstResult = result;
+                        }
+                    }
+
+                    if (firstResult && firstResult.error) {
+                        document.getElementById('trainingResult').className = 'alert alert-danger';
+                        document.getElementById('trainingResult').innerHTML = `Error: ${firstResult.error}`;
+                    } else if (firstResult) {
+                        document.getElementById('trainingResult').className = 'alert alert-success';
+                        document.getElementById('trainingResult').innerHTML = `
+                                <h5>Entrenamiento iniciado</h5>
+                                <p>${firstResult.message}</p>
+                        ${firstResult.details ? `<p>Modelos exitosos: ${firstResult.details.successful}</p>
+                                <p>Modelos fallidos: ${firstResult.details.failed}</p>` : ''}
+                                <p>Consulte los logs para más detalles.</p>
+                            `;
+                    }
                 } catch (error) {
-                    document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
                     document.getElementById('trainingResult').className = 'alert alert-danger';
+                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
                 }
             });
+
+            async function sendTrainingBatch(formData) {
+                while (true) {
+                    try {
+                        const response = await fetch('/api/train/raw', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        return await response.json();
+                    } catch (err) {
+                        if (err.message && (err.message.includes('NetworkError') || err.message.includes('Failed to fetch'))) {
+                            await new Promise(r => setTimeout(r, 500));
+                            continue;
+                        }
+                        throw err;
+                    }
+                }
+            }
 
             document.getElementById('predictionFile').addEventListener('change', async function (e) {
                 if (e.target.files.length === 0) return;
