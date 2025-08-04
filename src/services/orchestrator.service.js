@@ -11,6 +11,8 @@ class OrchestratorService {
     this.models = config.models;
     this.timeout = config.timeouts.model;
     this.trainingTimeout = config.timeouts.training;
+    // number of discharges kept in memory at once during training
+    this.trainingBatchSize = 10;
     // In-memory storage for training results
     this.trainingSummaries = [];
   }
@@ -437,38 +439,44 @@ class OrchestratorService {
    * @param {Array<Object>} rawDischarges - Descargas con archivos o ya procesadas
    * @returns {AsyncGenerator<Object>} - Generador que produce una descarga por vez
    */
-  async *prepareTrainingStream(rawDischarges = []) {
-    for (let idx = 0; idx < rawDischarges.length; idx++) {
-      const d = rawDischarges[idx];
+  async *prepareTrainingStream(rawDischarges = [], batchSize = this.trainingBatchSize) {
+    for (let start = 0; start < rawDischarges.length; start += batchSize) {
+      const end = Math.min(start + batchSize, rawDischarges.length);
+      for (let idx = start; idx < end; idx++) {
+        const d = rawDischarges[idx];
 
-      let discharge;
-      if (d.files) {
-        if (!d.files.length) {
-          throw new Error(`Discharge ${d.id || idx} has no files`);
+        let discharge;
+        if (d.files) {
+          if (!d.files.length) {
+            throw new Error(`Discharge ${d.id || idx} has no files`);
+          }
+          const { signals, times, length } = this.parseSensorFiles(d.files);
+          discharge = {
+            id: String(d.id || `discharge_${idx + 1}`),
+            signals,
+            times,
+            length
+          };
+        } else if (d.signals && d.times) {
+          discharge = {
+            id: String(d.id || `discharge_${idx + 1}`),
+            signals: d.signals,
+            times: d.times,
+            length: d.length || d.times.length
+          };
+        } else {
+          throw new Error(`Discharge ${d.id || idx} has no files or signals`);
         }
-        const { signals, times, length } = this.parseSensorFiles(d.files);
-        discharge = {
-          id: String(d.id || `discharge_${idx + 1}`),
-          signals,
-          times,
-          length
-        };
-      } else if (d.signals && d.times) {
-        discharge = {
-          id: String(d.id || `discharge_${idx + 1}`),
-          signals: d.signals,
-          times: d.times,
-          length: d.length || d.times.length
-        };
-      } else {
-        throw new Error(`Discharge ${d.id || idx} has no files or signals`);
-      }
 
-      if (d.anomalyTime !== undefined) {
-        discharge.anomalyTime = d.anomalyTime;
-      }
+        if (d.anomalyTime !== undefined) {
+          discharge.anomalyTime = d.anomalyTime;
+        }
 
-      yield discharge;
+        // remove processed discharge to free memory before yielding
+        rawDischarges[idx] = null;
+
+        yield discharge;
+      }
     }
   }
 }

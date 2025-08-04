@@ -20,6 +20,27 @@ describe('prepareTrainingStream', () => {
     expect(out[0].signals.length).toBe(1);
     expect(out[0].times.length).toBe(2);
   });
+
+  test('frees memory after each processed batch', async () => {
+    const raw = Array.from({ length: 12 }, (_, i) => ({
+      id: `d${i + 1}`,
+      files: [{ name: `s${i + 1}.txt`, content: '0 1\n1 2' }]
+    }));
+
+    const stream = orchestratorService.prepareTrainingStream(raw, 5);
+    const received = [];
+    let count = 0;
+    for await (const d of stream) {
+      received.push(d.id);
+      count++;
+      if (count === 5) {
+        expect(raw.slice(0, 5).every(r => r === null)).toBe(true);
+      }
+    }
+
+    expect(received.length).toBe(12);
+    expect(raw.every(r => r === null)).toBe(true);
+  });
 });
 
 describe('trainModel', () => {

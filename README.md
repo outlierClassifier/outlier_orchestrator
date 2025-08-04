@@ -2,6 +2,8 @@
 
 This repository implements the orchestrator for our disruption prediction system. Messages are described at the [outlier protocol](https://github.com/outlierClassifier/outlier_protocol). The orchestrator now speaks the **outlier node protocol v0.1.0** when communicating with prediction nodes.
 
+Training uploads are streamed to the models in batches of **10 discharges**. This keeps memory usage low even for large datasets and is fully transparent for connected nodes.
+
 ## Installation
 
 ```bash
