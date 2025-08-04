@@ -2364,63 +2364,72 @@
             });
 
             // Event listener for processing discharges for training
-            document.getElementById('processDischargesBtn').addEventListener('click', function () {
+            document.getElementById('processDischargesBtn').addEventListener('click', async function () {
+                const btn = document.getElementById('processDischargesBtn');
+                const original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+
                 try {
-                    const metadata = {
-                        discharges: discharges.map(d => ({ id: d.id, anomalyTime: d.anomalyTime }))
-                    };
+                    const total = discharges.length;
+                    let firstResult = null;
 
-                    const formData = new FormData();
-                    formData.append('metadata', JSON.stringify(metadata));
+                    for (let start = 0; start < discharges.length; start += 10) {
+                        const batch = discharges.slice(start, start + 10);
+                        const metadata = {
+                            totalDischarges: total,
+                            discharges: batch.map(d => ({ id: d.id, anomalyTime: d.anomalyTime }))
+                        };
 
-                    discharges.forEach((discharge, idx) => {
-                        discharge.files.forEach(f => {
-                            formData.append(`discharge${idx}`, f.file, f.name);
+                        const formData = new FormData();
+                        formData.append('metadata', JSON.stringify(metadata));
+
+                        batch.forEach((discharge, idx) => {
+                            discharge.files.forEach(f => {
+                                formData.append(`discharge${idx}`, f.file, f.name);
+                            });
                         });
-                    });
 
-                    fetch('/api/train/raw', {
-                        method: 'POST',
-                        body: formData
-                    })
-                        .then(response => response.json())
-                        .then(result => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
+                        let response;
+                        while (true) {
+                            try {
+                                response = await fetch('/api/train/raw', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+                                break;
+                            } catch (err) {
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        }
+                        const result = await response.json();
+                        if (!firstResult) {
+                            firstResult = result;
+                        }
+                    }
 
-                            if (result.error) {
-                                document.getElementById('trainingResult').className = 'alert alert-danger';
-                                document.getElementById('trainingResult').innerHTML = `Error: ${result.error}`;
-                            } else {
-                                document.getElementById('trainingResult').className = 'alert alert-success';
-                                document.getElementById('trainingResult').innerHTML = `
+                    document.getElementById('trainingResultContainer').style.display = 'block';
+
+                    if (firstResult && firstResult.error) {
+                        document.getElementById('trainingResult').className = 'alert alert-danger';
+                        document.getElementById('trainingResult').innerHTML = `Error: ${firstResult.error}`;
+                    } else if (firstResult) {
+                        document.getElementById('trainingResult').className = 'alert alert-success';
+                        document.getElementById('trainingResult').innerHTML = `
                                 <h5>Entrenamiento iniciado</h5>
-                                <p>${result.message}</p>
-                                <p>Modelos exitosos: ${result.details.successful}</p>
-                                <p>Modelos fallidos: ${result.details.failed}</p>
+                                <p>${firstResult.message}</p>
+                        ${firstResult.details ? `<p>Modelos exitosos: ${firstResult.details.successful}</p>
+                                <p>Modelos fallidos: ${firstResult.details.failed}</p>` : ''}
                                 <p>Consulte los logs para más detalles.</p>
                             `;
-                            }
-                        })
-                        .catch(error => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
-                            document.getElementById('trainingResult').className = 'alert alert-danger';
-                            document.getElementById('trainingResult').innerHTML = `Error sending training data: ${error.message}`;
-                        });
-
-                    document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `
-                        <div class="text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Sending training data...</p>
-                        </div>
-                    `;
-                    document.getElementById('trainingResult').className = 'alert';
+                    }
                 } catch (error) {
                     document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
                     document.getElementById('trainingResult').className = 'alert alert-danger';
+                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = original;
                 }
             });
 
