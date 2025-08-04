@@ -115,6 +115,9 @@ class OrchestratorController {
         });
       }
 
+      const totalDischarges = meta.totalDischarges;
+      const batchIndex = meta.batch || 0;
+
       const discharges = meta.discharges.map((d, idx) => ({
         id: d.id || `discharge_${idx + 1}`,
         anomalyTime: d.anomalyTime !== undefined ? d.anomalyTime : null,
@@ -134,12 +137,20 @@ class OrchestratorController {
         }
       }
 
-      const result = await orchestratorService.trainModels({ discharges });
+      let response;
+      if (batchIndex === 0) {
+        const summary = await orchestratorService.startTrainingSession(totalDischarges);
+        await orchestratorService.sendTrainingBatch(discharges);
+        response = {
+          message: 'Entrenamiento iniciado correctamente',
+          details: summary
+        };
+      } else {
+        await orchestratorService.sendTrainingBatch(discharges);
+        response = { message: 'Batch recibido' };
+      }
 
-      return res.status(StatusCodes.OK).json({
-        message: 'Entrenamiento iniciado correctamente',
-        details: result
-      });
+      return res.status(StatusCodes.OK).json(response);
     } catch (error) {
       logger.error(`Error en entrenamiento raw: ${error.message}`);
       return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
