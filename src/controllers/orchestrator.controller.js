@@ -79,12 +79,23 @@ class OrchestratorController {
       try {
         let summary;
         if (!orchestratorService.trainingSession) {
-          const total = trainingData.totalDischarges || trainingData.discharges.length;
-          summary = await orchestratorService.startTrainingSession(total);
+          const hasTotal = typeof trainingData.totalDischarges === 'number';
+          const total = hasTotal ? trainingData.totalDischarges : trainingData.discharges.length;
+          summary = await orchestratorService.startTrainingSession(total, hasTotal);
+        } else if (!orchestratorService.trainingSession.autoFinish && typeof trainingData.totalDischarges === 'number') {
+          orchestratorService.trainingSession.autoFinish = true;
+          orchestratorService.trainingSession.totalDischarges = trainingData.totalDischarges;
+        } else if (orchestratorService.trainingSession.autoFinish) {
+          if (trainingData.totalDischarges && trainingData.totalDischarges > orchestratorService.trainingSession.totalDischarges) {
+            orchestratorService.trainingSession.totalDischarges = trainingData.totalDischarges;
+          }
+        } else {
+          orchestratorService.trainingSession.totalDischarges += trainingData.discharges.length;
         }
         await orchestratorService.sendTrainingBatch(trainingData.discharges);
 
         if (orchestratorService.trainingSession &&
+            orchestratorService.trainingSession.autoFinish &&
             orchestratorService.trainingSession.enqueued >= orchestratorService.trainingSession.totalDischarges) {
           orchestratorService.finishTraining();
         }
@@ -145,13 +156,24 @@ class OrchestratorController {
 
       let summary;
       if (!orchestratorService.trainingSession) {
-        const total = meta.totalDischarges || discharges.length;
-        summary = await orchestratorService.startTrainingSession(total);
+        const hasTotal = typeof meta.totalDischarges === 'number';
+        const total = hasTotal ? meta.totalDischarges : discharges.length;
+        summary = await orchestratorService.startTrainingSession(total, hasTotal);
+      } else if (!orchestratorService.trainingSession.autoFinish && typeof meta.totalDischarges === 'number') {
+        orchestratorService.trainingSession.autoFinish = true;
+        orchestratorService.trainingSession.totalDischarges = meta.totalDischarges;
+      } else if (orchestratorService.trainingSession.autoFinish) {
+        if (meta.totalDischarges && meta.totalDischarges > orchestratorService.trainingSession.totalDischarges) {
+          orchestratorService.trainingSession.totalDischarges = meta.totalDischarges;
+        }
+      } else {
+        orchestratorService.trainingSession.totalDischarges += discharges.length;
       }
 
       await orchestratorService.sendTrainingBatch(discharges);
 
       if (orchestratorService.trainingSession &&
+          orchestratorService.trainingSession.autoFinish &&
           orchestratorService.trainingSession.enqueued >= orchestratorService.trainingSession.totalDischarges) {
         orchestratorService.finishTraining();
       }

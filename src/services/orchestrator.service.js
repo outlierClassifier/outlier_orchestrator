@@ -133,7 +133,7 @@ class OrchestratorService {
    * @param {number} totalDischarges - Total de descargas a enviar en toda la sesión
    * @returns {Object} Resumen de los modelos que aceptaron el entrenamiento
    */
-  async startTrainingSession(totalDischarges) {
+  async startTrainingSession(totalDischarges, autoFinish = true) {
     const enabledModels = Object.keys(this.models)
       .filter(model => this.models[model].enabled);
 
@@ -171,6 +171,7 @@ class OrchestratorService {
       totalDischarges,
       enqueued: 0,
       finished: false,
+      autoFinish,
       models: sessionModels,
       processed: new Set()
     };
