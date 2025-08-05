@@ -2254,6 +2254,16 @@
                     });
                 });
 
+            async function fetchWithTimeout(resource, options = {}, timeout = 10000) {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), timeout);
+                try {
+                    return await fetch(resource, { ...options, signal: controller.signal });
+                } finally {
+                    clearTimeout(id);
+                }
+            }
+
             document.getElementById('addModelBtn').addEventListener('click', async function () {
                 const name = prompt('Model name:');
                 if (!name) return;
@@ -2395,19 +2405,18 @@
 
                             try {
                                 console.log('Sending training request with metadata:', metadata);
-                                response = await fetch('/api/train/raw', {
+                                response = await fetchWithTimeout('/api/train/raw', {
                                     method: 'POST',
                                     body: formData
-                                });
+                                }, 10000);
                                 if (!response.ok) {
                                     console.error('HTTP error:', response.status, response.statusText);
-                                    // throw new Error(`HTTP error! status: ${response.status}`);
                                 } else {
                                     console.log('Training request successful');
                                 }
                                 break;
                             } catch (err) {
-                                console.error('Error during training request:', err);
+                                console.error('Fetch error:', err);
                                 await new Promise(r => setTimeout(r, 500));
                             }
                         }
