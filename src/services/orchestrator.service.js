@@ -196,6 +196,7 @@ class OrchestratorService {
 
     for await (const discharge of stream) {
       if (this.trainingSession.processed.has(discharge.id)) {
+        console.warn(`Discharge ${discharge.id} already processed, skipping`);
         if (discharge.signals) {
           for (const s of discharge.signals) {
             s.values = null;
@@ -211,6 +212,7 @@ class OrchestratorService {
       for (const modelName of Object.keys(this.trainingSession.models)) {
         const model = this.trainingSession.models[modelName];
         model.queue.push(this.cloneDischarge(discharge));
+        console.log(`Enqueued discharge ${discharge.id} for model ${modelName}`);
         this.processQueue(modelName);
       }
 
@@ -231,6 +233,7 @@ class OrchestratorService {
    */
   finishTraining() {
     if (this.trainingSession) {
+      console.log('Finishing training session');
       this.trainingSession.finished = true;
       if (this.allQueuesEmpty()) {
         this.trainingSession = null;

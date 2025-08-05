@@ -2394,12 +2394,20 @@
                             });
 
                             try {
+                                console.log('Sending training request with metadata:', metadata);
                                 response = await fetch('/api/train/raw', {
                                     method: 'POST',
                                     body: formData
                                 });
+                                if (!response.ok) {
+                                    console.error('HTTP error:', response.status, response.statusText);
+                                    // throw new Error(`HTTP error! status: ${response.status}`);
+                                } else {
+                                    console.log('Training request successful');
+                                }
                                 break;
                             } catch (err) {
+                                console.error('Error during training request:', err);
                                 await new Promise(r => setTimeout(r, 500));
                             }
                         }

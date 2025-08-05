@@ -131,7 +131,7 @@ class OrchestratorController {
 
       if (!meta || !Array.isArray(meta.discharges) || meta.discharges.length === 0) {
         return res.status(StatusCodes.BAD_REQUEST).json({
-          error: 'Metadata de descargas es requerida'
+          error: 'Discharge metadata is required'
         });
       }
 
@@ -142,6 +142,7 @@ class OrchestratorController {
       }));
 
       for (const file of req.files || []) {
+        console.log(`Processing file: ${file.originalname}`);
         const match = file.fieldname.match(/^discharge(\d+)$/);
         if (match) {
           const index = parseInt(match[1], 10);
