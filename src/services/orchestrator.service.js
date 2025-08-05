@@ -242,6 +242,20 @@ class OrchestratorService {
       .every(m => m.queue.length === 0 && !m.sending);
   }
 
+  async awaitQueuesEmpty(timeoutMs = this.trainingTimeout) {
+    if (!this.trainingSession) return true;
+
+    const end = Date.now() + timeoutMs;
+    while (!this.allQueuesEmpty()) {
+      if (Date.now() >= end) {
+        logger.warn('Timeout waiting for training queues to empty');
+        return false;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return true;
+  }
+
   cloneDischarge(d) {
     const clone = { id: d.id, length: d.length };
     if (d.anomalyTime !== undefined) {
@@ -293,6 +307,10 @@ class OrchestratorService {
 
       model.queue.shift();
       model.nextSeq += 1;
+    }
+    
+    if (model.queue.length > 0) {
+      return this.processQueue(modelName);
     }
 
     model.sending = false;
@@ -365,6 +383,7 @@ class OrchestratorService {
     const totalDischarges = data.discharges.length;
     const summary = await this.startTrainingSession(totalDischarges);
     await this.sendTrainingBatch(data.discharges);
+    await this.awaitQueuesEmpty();
     this.finishTraining();
 
     logger.info(`Training completed: ${summary.successful} successful, ${summary.failed} failed`);
