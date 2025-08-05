@@ -275,47 +275,48 @@ class OrchestratorService {
     if (model.sending) return;
     model.sending = true;
 
-    while (model.queue.length > 0) {
-      const discharge = model.queue[0];
-      let sent = false;
-      while (!sent) {
-        try {
-          await axios({
-            method: 'post',
-            url: `${model.trainingUrl}/${model.nextSeq}`,
-            data: discharge,
-            timeout: this.trainingTimeout
-          });
-          sent = true;
-        } catch (error) {
-          if (!error.response) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          } else {
-            logger.error(`Error training ${modelName}: ${error.message}`);
+    try {
+      while (model.queue.length > 0) {
+        const discharge = model.queue[0];
+        let sent = false;
+        while (!sent) {
+          try {
+            await axios({
+              method: 'post',
+              url: `${model.trainingUrl}/${model.nextSeq}`,
+              data: discharge,
+              timeout: this.trainingTimeout
+            });
             sent = true;
+          } catch (error) {
+            if (!error.response) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              logger.error(`Error training ${modelName}: ${error.message}`);
+              sent = true;
+            }
           }
         }
-      }
 
-      if (discharge.signals) {
-        for (const s of discharge.signals) {
-          s.values = null;
+        if (discharge.signals) {
+          for (const s of discharge.signals) {
+            s.values = null;
+          }
+          discharge.signals = null;
         }
-        discharge.signals = null;
+        discharge.times = null;
+
+        model.queue.shift();
+        model.nextSeq += 1;
       }
-      discharge.times = null;
-
-      model.queue.shift();
-      model.nextSeq += 1;
-    }
-    
-    if (model.queue.length > 0) {
-      return this.processQueue(modelName);
-    }
-
-    model.sending = false;
-    if (this.trainingSession.finished && this.allQueuesEmpty()) {
-      this.trainingSession = null;
+    } finally {
+      model.sending = false;
+      if (model.queue.length > 0) {
+        logger.debug(`Queue for ${modelName} not empty after processing; scheduling next run`);
+        setImmediate(() => this.processQueue(modelName));
+      } else if (this.trainingSession.finished && this.allQueuesEmpty()) {
+        this.trainingSession = null;
+      }
     }
   }
 
