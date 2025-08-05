@@ -142,7 +142,6 @@ class OrchestratorController {
       }));
 
       for (const file of req.files || []) {
-        console.log(`Processing file: ${file.originalname}`);
         const match = file.fieldname.match(/^discharge(\d+)$/);
         if (match) {
           const index = parseInt(match[1], 10);

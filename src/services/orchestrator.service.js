@@ -278,7 +278,6 @@ class OrchestratorService {
     const model = this.trainingSession.models[modelName];
     console.log(`Processing queue for model: ${modelName}`);
     if (model.sending) {
-      console.log(`Model ${modelName} is already sending, marking as pending`);
       model.pending = true;
       return;
     }
