@@ -158,7 +158,7 @@ class OrchestratorService {
           data: { totalDischarges, timeoutSeconds },
           timeout: this.trainingTimeout
         });
-        sessionModels[modelName] = { trainingUrl: modelConfig.trainingUrl, queue: [], nextSeq: 1, sending: false };
+        sessionModels[modelName] = { trainingUrl: modelConfig.trainingUrl, queue: [], nextSeq: 1, sending: false, pending: false };
         details.push({ modelName, status: 'success' });
         successful += 1;
       } catch (error) {
@@ -272,7 +272,13 @@ class OrchestratorService {
 
   async processQueue(modelName) {
     const model = this.trainingSession.models[modelName];
-    if (model.sending) return;
+    console.log(`Processing queue for model: ${modelName}`);
+    if (model.sending) {
+      console.log(`Model ${modelName} is already sending, marking as pending`);
+      model.pending = true;
+      return;
+    }
+    console.log(`Starting to process queue for model: ${modelName}`);
     model.sending = true;
 
     try {
@@ -290,8 +296,10 @@ class OrchestratorService {
             sent = true;
           } catch (error) {
             if (!error.response) {
+              console.warn(`Network error while training ${modelName}: ${error.message}`);
               await new Promise(resolve => setTimeout(resolve, 500));
             } else {
+              console.error(`Error training ${modelName}: ${error.message}`);
               logger.error(`Error training ${modelName}: ${error.message}`);
               sent = true;
             }
@@ -311,7 +319,10 @@ class OrchestratorService {
       }
     } finally {
       model.sending = false;
-      if (model.queue.length > 0) {
+      console.log(`Finished processing queue for model: ${modelName}`);
+      if (model.queue.length > 0 || model.pending) {
+        model.pending = false;
+        console.log(`Queue for ${modelName} not empty after processing; scheduling next run`);
         logger.debug(`Queue for ${modelName} not empty after processing; scheduling next run`);
         setImmediate(() => this.processQueue(modelName));
       } else if (this.trainingSession.finished && this.allQueuesEmpty()) {
