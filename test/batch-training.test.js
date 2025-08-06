@@ -32,10 +32,10 @@ describe('batch training session', () => {
     ]);
     await new Promise(r => setTimeout(r, 0));
 
-    expect(axios).toHaveBeenCalledTimes(3);
-    expect(axios.mock.calls[0][0].url).toBe('http://localhost:9999/train');
-    expect(axios.mock.calls[1][0].url).toBe('http://localhost:9999/train/1');
-    expect(axios.mock.calls[2][0].url).toBe('http://localhost:9999/train/2');
+    expect(axios).toHaveBeenCalledTimes(4);
+    expect(axios.mock.calls[1][0].url).toBe('http://localhost:9999/train');
+    expect(axios.mock.calls[2][0].url).toBe('http://localhost:9999/train/1');
+    expect(axios.mock.calls[3][0].url).toBe('http://localhost:9999/train/2');
   });
 
   test('ignores duplicate discharges when retrying', async () => {
@@ -54,8 +54,8 @@ describe('batch training session', () => {
     await new Promise(r => setTimeout(r, 0));
 
     expect(orchestratorService.trainingSession.enqueued).toBe(2);
-    expect(axios).toHaveBeenCalledTimes(3);
-    expect(axios.mock.calls[1][0].url).toBe('http://localhost:9999/train/1');
-    expect(axios.mock.calls[2][0].url).toBe('http://localhost:9999/train/2');
+    expect(axios).toHaveBeenCalledTimes(4);
+    expect(axios.mock.calls[2][0].url).toBe('http://localhost:9999/train/1');
+    expect(axios.mock.calls[3][0].url).toBe('http://localhost:9999/train/2');
   });
 });

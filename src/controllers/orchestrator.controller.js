@@ -2,6 +2,14 @@ const { StatusCodes } = require('http-status-codes');
 const orchestratorService = require('../services/orchestrator.service');
 const logger = require('../utils/logger');
 const config = require('../config');
+const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { randomUUID } = require('crypto');
+
+// Sessions to accumulate automated prediction results without keeping everything in memory
+const automatedPredictSessions = {};
 
 /**
  * Controlador para la orquestación de modelos y predicciones
@@ -49,6 +57,166 @@ class OrchestratorController {
         message: error.message
       });
     }
+  }
+
+  /**
+   * Start a session for sequential automated predictions
+   * @param {Request} _req
+   * @param {Response} res
+   */
+  startAutomatedPredictsSession(_req, res) {
+    const id = randomUUID();
+    const dir = path.join(os.tmpdir(), `automated_predicts_${id}`);
+    fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
+    automatedPredictSessions[id] = { dir, stats: {} };
+    res.json({ sessionId: id });
+  }
+
+  /**
+   * Process a batch of prediction files for a session
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async uploadAutomatedPredict(req, res) {
+    const { sessionId } = req.params;
+    const session = automatedPredictSessions[sessionId];
+    if (!session) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
+    }
+
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'No prediction files uploaded' });
+    }
+
+    const thresholds = req.body.thresholds ? JSON.parse(req.body.thresholds) : {};
+    const dischargeId = req.body.dischargeId || files[0].originalname;
+
+    try {
+      const fileData = [];
+      for (const f of files) {
+        try {
+          const content = await fs.promises.readFile(f.path, 'utf8');
+          fileData.push({ name: f.originalname, content });
+        } finally {
+          fs.unlink(f.path, () => {});
+        }
+      }
+
+      const { signals, times, length } = orchestratorService.parseSensorFiles(fileData);
+      const discharge = { id: dischargeId, signals, times, length };
+
+      const result = await orchestratorService.orchestrate({ discharges: [discharge] });
+
+      const rawDir = path.join(session.dir, 'raw');
+      const safeName = dischargeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await fs.promises.writeFile(path.join(rawDir, `${safeName}.json`), JSON.stringify(result, null, 2));
+
+      (result.models || []).forEach(modelResp => {
+        const name = modelResp.modelName;
+        const cfg = thresholds[name] || {};
+        const justThresh = parseFloat(cfg.justification) || 0;
+        const countThresh = parseInt(cfg.count) || 1;
+
+        const rawJust = modelResp.result && modelResp.result.justification;
+        const justArray = modelResp.result && modelResp.result.windows 
+          ? modelResp.result.windows
+              .map(window => window.justification)
+              .filter(justification => justification !== undefined && justification !== null)
+              .map(justification => parseFloat(justification))
+          : [];
+
+        if (!session.stats[name]) {
+          session.stats[name] = { discharges: {}, dischargeIds: [], count: countThresh };
+        }
+        if (!session.stats[name].discharges[dischargeId]) {
+          session.stats[name].discharges[dischargeId] = { justifications: [], thresholds: [], count_thresholds: [] };
+          session.stats[name].dischargeIds.push(dischargeId);
+        }
+
+        const dStats = session.stats[name].discharges[dischargeId];
+        justArray.forEach(justification => {
+          const pass = justification > justThresh ? 1 : 0;
+          dStats.justifications.push(justification);
+          dStats.thresholds.push(pass);
+          const history = dStats.thresholds;
+          const countPass =
+            history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
+          dStats.count_thresholds.push(countPass);
+        });
+      });
+
+      res.json({ ok: true });
+    } catch (error) {
+      logger.warn(`Error processing discharge ${dischargeId}: ${error.message}`);
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        error: 'Invalid prediction files',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Finalize session and send ZIP with accumulated results
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async finalizeAutomatedPredicts(req, res) {
+    const { sessionId } = req.params;
+    const session = automatedPredictSessions[sessionId];
+    if (!session) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
+    }
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+
+    const archive = archiver('zip');
+    archive.on('error', err => { throw err; });
+    archive.pipe(res);
+
+    const rawDir = path.join(session.dir, 'raw');
+    for (const file of await fs.promises.readdir(rawDir)) {
+      archive.file(path.join(rawDir, file), { name: `raw/${file}` });
+    }
+
+    Object.entries(session.stats).forEach(([model, data]) => {
+      const headers = [];
+      data.dischargeIds.forEach(id => {
+        const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        headers.push(
+          `${safeId}_justification`,
+          `${safeId}_justification_threshold`,
+          `${safeId}_count_threshold`
+        );
+      });
+
+      const maxRows = Math.max(
+        0,
+        ...data.dischargeIds.map(id => data.discharges[id].justifications.length)
+      );
+      const rows = [];
+      for (let i = 0; i < maxRows; i++) {
+        const row = [];
+        data.dischargeIds.forEach(id => {
+          const d = data.discharges[id];
+          row.push(
+            d.justifications[i] !== undefined ? d.justifications[i] : '',
+            d.thresholds[i] !== undefined ? d.thresholds[i] : '',
+            d.count_thresholds[i] !== undefined ? d.count_thresholds[i] : ''
+          );
+        });
+        rows.push(row.join(','));
+      }
+      const csv = `${headers.join(',')}\n${rows.join('\n')}`;
+      archive.append(csv, { name: `stats/${model}.csv` });
+    });
+
+    await archive.finalize();
+
+    // Cleanup
+    fs.rm(session.dir, { recursive: true, force: true }, () => {});
+    delete automatedPredictSessions[sessionId];
   }
 
   /**
