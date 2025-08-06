@@ -3,6 +3,13 @@ const orchestratorService = require('../services/orchestrator.service');
 const logger = require('../utils/logger');
 const config = require('../config');
 const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { randomUUID } = require('crypto');
+
+// Sessions to accumulate automated prediction results without keeping everything in memory
+const automatedPredictSessions = {};
 
 /**
  * Controlador para la orquestación de modelos y predicciones
@@ -78,26 +85,57 @@ class OrchestratorController {
         }
       }
 
+      const groupPattern = req.body.groupPattern || '(.*)';
+      let groupRegex;
+      try {
+        groupRegex = new RegExp(groupPattern);
+      } catch (e) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid grouping pattern' });
+      }
+
       const filtered = files.filter(f => !(exclusionRegex && exclusionRegex.test(f.originalname)));
-      const results = [];
+      const groups = {};
+      filtered.forEach(f => {
+        const match = f.originalname.match(groupRegex);
+        const key = match ? (match[1] || match[0]) : f.originalname;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(f);
+      });
+
       const stats = {};
 
-      for (const file of filtered) {
-        let data;
-        try {
-          data = JSON.parse(file.buffer.toString('utf8'));
-        } catch (e) {
-          logger.warn(`Invalid JSON in ${file.originalname}: ${e.message}`);
-          continue;
+      res.set('Content-Type', 'application/zip');
+      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+
+      const archive = archiver('zip');
+      archive.on('error', err => { throw err; });
+      archive.pipe(res);
+
+      for (const [key, groupFiles] of Object.entries(groups)) {
+        const fileData = [];
+        for (const file of groupFiles) {
+          try {
+            const content = await fs.promises.readFile(file.path, 'utf8');
+            fileData.push({ name: file.originalname, content });
+          } finally {
+            fs.unlink(file.path, () => {});
+          }
         }
 
-        const result = await orchestratorService.orchestrate(data);
-        results.push({ file: file.originalname, result });
+        const { signals, times, length } = orchestratorService.parseSensorFiles(fileData);
+        const discharge = { id: key, signals, times, length };
+
+        const result = await orchestratorService.orchestrate({ discharges: [discharge] });
+        const safeName = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+        archive.append(JSON.stringify(result, null, 2), { name: `raw/${safeName}.json` });
 
         (result.models || []).forEach(modelResp => {
           const name = modelResp.modelName;
-          const justification = modelResp.result && modelResp.result.justification !== undefined ?
-            modelResp.result.justification : 0;
+          const justification = parseFloat(
+            modelResp.result && modelResp.result.justification !== undefined
+              ? modelResp.result.justification
+              : 0
+          );
 
           const cfg = thresholds[name] || {};
           const justThresh = parseFloat(cfg.justification) || 0;
@@ -110,25 +148,22 @@ class OrchestratorController {
           const pass = justification > justThresh ? 1 : 0;
           stats[name].passes.push(pass);
           const history = stats[name].passes;
-          const countPass = history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
-          stats[name].rows.push({ justification, justification_threshold: pass, count_threshold: countPass });
+          const countPass =
+            history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
+          stats[name].rows.push({
+            discharge: key,
+            justification,
+            justification_threshold: pass,
+            count_threshold: countPass
+          });
         });
       }
 
-      res.set('Content-Type', 'application/zip');
-      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
-
-      const archive = archiver('zip');
-      archive.on('error', err => { throw err; });
-      archive.pipe(res);
-
-      results.forEach(r => {
-        archive.append(JSON.stringify(r.result, null, 2), { name: `raw/${r.file}` });
-      });
-
       Object.entries(stats).forEach(([model, data]) => {
-        let csv = 'justification,justification_threshold,count_threshold\n';
-        csv += data.rows.map(row => `${row.justification},${row.justification_threshold},${row.count_threshold}`).join('\n');
+        let csv = 'discharge,justification,justification_threshold,count_threshold\n';
+        csv += data.rows
+          .map(row => `${row.discharge},${row.justification},${row.justification_threshold},${row.count_threshold}`)
+          .join('\n');
         archive.append(csv, { name: `stats/${model}.csv` });
       });
 
@@ -140,6 +175,140 @@ class OrchestratorController {
         message: error.message
       });
     }
+  }
+
+  /**
+   * Start a session for sequential automated predictions
+   * @param {Request} _req
+   * @param {Response} res
+   */
+  startAutomatedPredictsSession(_req, res) {
+    const id = randomUUID();
+    const dir = path.join(os.tmpdir(), `automated_predicts_${id}`);
+    fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
+    automatedPredictSessions[id] = { dir, stats: {} };
+    res.json({ sessionId: id });
+  }
+
+  /**
+   * Process a batch of prediction files for a session
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async uploadAutomatedPredict(req, res) {
+    const { sessionId } = req.params;
+    const session = automatedPredictSessions[sessionId];
+    if (!session) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
+    }
+
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'No prediction files uploaded' });
+    }
+
+    const thresholds = req.body.thresholds ? JSON.parse(req.body.thresholds) : {};
+    const dischargeId = req.body.dischargeId || files[0].originalname;
+
+    try {
+      const fileData = [];
+      for (const f of files) {
+        try {
+          const content = await fs.promises.readFile(f.path, 'utf8');
+          fileData.push({ name: f.originalname, content });
+        } finally {
+          fs.unlink(f.path, () => {});
+        }
+      }
+
+      const { signals, times, length } = orchestratorService.parseSensorFiles(fileData);
+      const discharge = { id: dischargeId, signals, times, length };
+
+      const result = await orchestratorService.orchestrate({ discharges: [discharge] });
+
+      const rawDir = path.join(session.dir, 'raw');
+      const safeName = dischargeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await fs.promises.writeFile(
+        path.join(rawDir, `${safeName}.json`),
+        JSON.stringify(result, null, 2)
+      );
+
+      (result.models || []).forEach(modelResp => {
+        const name = modelResp.modelName;
+        const justification = parseFloat(
+          modelResp.result && modelResp.result.justification !== undefined
+            ? modelResp.result.justification
+            : 0
+        );
+
+        const cfg = thresholds[name] || {};
+        const justThresh = parseFloat(cfg.justification) || 0;
+        const countThresh = parseInt(cfg.count) || 1;
+
+        if (!session.stats[name]) {
+          session.stats[name] = { rows: [], passes: [], count: countThresh };
+        }
+
+        const pass = justification > justThresh ? 1 : 0;
+        session.stats[name].passes.push(pass);
+        const history = session.stats[name].passes;
+        const countPass =
+          history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
+        session.stats[name].rows.push({
+          discharge: dischargeId,
+          justification,
+          justification_threshold: pass,
+          count_threshold: countPass
+        });
+      });
+
+      res.json({ ok: true });
+    } catch (error) {
+      logger.warn(`Error processing discharge ${dischargeId}: ${error.message}`);
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        error: 'Invalid prediction files',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Finalize session and send ZIP with accumulated results
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async finalizeAutomatedPredicts(req, res) {
+    const { sessionId } = req.params;
+    const session = automatedPredictSessions[sessionId];
+    if (!session) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
+    }
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+
+    const archive = archiver('zip');
+    archive.on('error', err => { throw err; });
+    archive.pipe(res);
+
+    const rawDir = path.join(session.dir, 'raw');
+    for (const file of await fs.promises.readdir(rawDir)) {
+      archive.file(path.join(rawDir, file), { name: `raw/${file}` });
+    }
+
+    Object.entries(session.stats).forEach(([model, data]) => {
+      let csv = 'discharge,justification,justification_threshold,count_threshold\n';
+      csv += data.rows
+        .map(row => `${row.discharge},${row.justification},${row.justification_threshold},${row.count_threshold}`)
+        .join('\n');
+      archive.append(csv, { name: `stats/${model}.csv` });
+    });
+
+    await archive.finalize();
+
+    // Cleanup
+    fs.rm(session.dir, { recursive: true, force: true }, () => {});
+    delete automatedPredictSessions[sessionId];
   }
 
   /**
