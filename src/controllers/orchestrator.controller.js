@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { randomUUID } = require('crypto');
+const { exec } = require('child_process');
+const QuickChart = require('quickchart-js');
 
 // Sessions to accumulate automated prediction results without keeping everything in memory
 const automatedPredictSessions = {};
@@ -68,7 +70,7 @@ class OrchestratorController {
     const id = randomUUID();
     const dir = path.join(os.tmpdir(), `automated_predicts_${id}`);
     fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
-    automatedPredictSessions[id] = { dir, stats: {} };
+    automatedPredictSessions[id] = { dir, stats: {}, dischargeOrder: [] };
     res.json({ sessionId: id });
   }
 
@@ -146,6 +148,10 @@ class OrchestratorController {
         });
       });
 
+      if (!session.dischargeOrder.includes(dischargeId)) {
+        session.dischargeOrder.push(dischargeId);
+      }
+
       res.json({ ok: true });
     } catch (error) {
       logger.warn(`Error processing discharge ${dischargeId}: ${error.message}`);
@@ -212,12 +218,96 @@ class OrchestratorController {
       archive.append(csv, { name: `stats/${model}.csv` });
     });
 
+    try {
+      const pdfPath = await this.generatePdfReport(sessionId, session);
+      archive.file(pdfPath, { name: 'report.pdf' });
+    } catch (err) {
+      logger.warn(`Failed to generate PDF report: ${err.message}`);
+    }
+
     await archive.finalize();
 
     // Cleanup
     fs.rm(session.dir, { recursive: true, force: true }, () => {});
     delete automatedPredictSessions[sessionId];
   }
+
+    async generatePdfReport(sessionId, session) {
+      const reportDir = session.dir;
+      const imgDir = path.join(reportDir, 'images');
+      await fs.promises.mkdir(imgDir, { recursive: true });
+
+      const models = Object.keys(session.stats);
+      const discharges = session.dischargeOrder;
+
+      for (const dischargeId of discharges) {
+        for (const model of models) {
+          const d = session.stats[model].discharges[dischargeId];
+          if (!d) continue;
+          const qc = new QuickChart();
+          qc.setWidth(600);
+          qc.setHeight(200);
+          qc.setConfig({
+            type: 'line',
+            data: {
+              labels: d.justifications.map((_, i) => i + 1),
+              datasets: [
+                { label: 'Justification', data: d.justifications, borderColor: 'blue', fill: false },
+                { label: 'Threshold', data: d.thresholds, borderColor: 'red', fill: false },
+                { label: 'Count Threshold', data: d.count_thresholds, borderColor: 'green', fill: false }
+              ]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+          });
+          const img = await qc.toBinary();
+          const safeModel = model.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const safeDischarge = dischargeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+          await fs.promises.writeFile(path.join(imgDir, `${safeModel}_${safeDischarge}.png`), img);
+        }
+      }
+
+      let tex = `\\documentclass{article}\n\\usepackage{graphicx}\n\\usepackage{booktabs}\n\\begin{document}\n`;
+      tex += `Report ${sessionId}\\\\\n`;
+      tex += `Total predictions: ${discharges.length}\\\\\n`;
+      tex += `Models (${models.length}): ${models.join(', ')}\\\\\n`;
+
+      for (const dischargeId of discharges) {
+        const safeDischarge = dischargeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        tex += `\\section*{Discharge ${dischargeId}}\\n`;
+        tex += `\\begin{tabular}{lll}\\toprule\\nModel & First detection window & Total windows\\\\\\midrule\\n`;
+        for (const model of models) {
+          const d = session.stats[model].discharges[dischargeId];
+          let first = '-';
+          let total = '-';
+          if (d) {
+            const idx = d.count_thresholds.findIndex(v => v === 1);
+            first = idx === -1 ? '-' : idx + 1;
+            total = d.justifications.length;
+          }
+          tex += `${model} & ${first} & ${total}\\\\\n`;
+        }
+        tex += `\\bottomrule\\end{tabular}\\n`;
+        for (const model of models) {
+          const safeModel = model.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const imgPath = path.join('images', `${safeModel}_${safeDischarge}.png`);
+          tex += `\\begin{figure}[h]\\centering\\includegraphics[width=\\textwidth]{${imgPath}}\\caption{${model} - ${dischargeId}}\\end{figure}\\n`;
+        }
+      }
+
+      tex += `\\end{document}`;
+
+      const texPath = path.join(reportDir, 'report.tex');
+      await fs.promises.writeFile(texPath, tex);
+
+      await new Promise((resolve, reject) => {
+        exec('pdflatex -interaction=nonstopmode report.tex', { cwd: reportDir }, (err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+
+      return path.join(reportDir, 'report.pdf');
+    }
 
   /**
    * Envía datos de entrenamiento a todos los modelos
