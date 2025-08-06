@@ -7,9 +7,91 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { randomUUID } = require('crypto');
+const { spawnSync } = require('child_process');
 
 // Sessions to accumulate automated prediction results without keeping everything in memory
 const automatedPredictSessions = {};
+
+async function generateAutomatedReport(sessionId, session) {
+  const models = Object.keys(session.stats);
+  const dischargeSet = new Set();
+  models.forEach(model => {
+    session.stats[model].dischargeIds.forEach(id => dischargeSet.add(id));
+  });
+  const discharges = Array.from(dischargeSet);
+
+  const figDir = path.join(session.dir, 'figures');
+  fs.mkdirSync(figDir, { recursive: true });
+
+  const tableData = {};
+  const figPaths = {};
+  for (const model of models) {
+    const data = session.stats[model];
+    for (const dischargeId of data.dischargeIds) {
+      const d = data.discharges[dischargeId];
+      const firstIdx = d.count_thresholds.indexOf(1);
+      const firstDet = firstIdx >= 0 ? firstIdx + 1 : '-';
+      const total = d.justifications.length;
+      if (!tableData[dischargeId]) tableData[dischargeId] = [];
+      tableData[dischargeId].push({ model, firstDet, total });
+
+      const labels = d.justifications.map((_, i) => i + 1);
+      const safeDis = dischargeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeModel = model.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const imgPath = path.join(figDir, `${safeDis}_${safeModel}.png`);
+      const py = `import matplotlib; matplotlib.use('Agg')\n` +
+        `import matplotlib.pyplot as plt\n` +
+        `labels=${JSON.stringify(labels)}\n` +
+        `just=${JSON.stringify(d.justifications)}\n` +
+        `thr=${JSON.stringify(d.thresholds)}\n` +
+        `cnt=${JSON.stringify(d.count_thresholds)}\n` +
+        `plt.figure(figsize=(8,4))\n` +
+        `plt.plot(labels, just, label='justification')\n` +
+        `plt.plot(labels, thr, label='justification_threshold')\n` +
+        `plt.plot(labels, cnt, label='count_threshold')\n` +
+        `plt.legend()\n` +
+        `plt.xlabel('window')\n` +
+        `plt.tight_layout()\n` +
+        `plt.savefig('${imgPath.replace(/\\/g, '\\\\')}')\n`;
+      spawnSync('python3', ['-'], { input: py });
+      if (!figPaths[dischargeId]) figPaths[dischargeId] = {};
+      figPaths[dischargeId][model] = imgPath;
+    }
+  }
+
+  const lines = [];
+  lines.push('\x5cdocumentclass{article}');
+  lines.push('\x5cusepackage{graphicx}');
+  lines.push('\x5cbegin{document}');
+  lines.push(`\x5ctitle{Report ${sessionId}}`);
+  lines.push('\x5cmaketitle');
+  lines.push(`Total predictions: ${discharges.length}`);
+  lines.push(`Models (${models.length}): ${models.join(', ')}`);
+  discharges.forEach(dischargeId => {
+    lines.push(`\x5csection*{Discharge ${dischargeId}}`);
+    lines.push('\x5cbegin{tabular}{|l|c|c|}\x5chline');
+    lines.push('model & first detection window & total windows\\\x5chline');
+    (tableData[dischargeId] || []).forEach(row => {
+      lines.push(`${row.model} & ${row.firstDet} & ${row.total}\\\x5chline`);
+    });
+    lines.push('\x5cend{tabular}');
+    const figs = figPaths[dischargeId] || {};
+    Object.entries(figs).forEach(([model, p]) => {
+      const rel = path.relative(session.dir, p).replace(/\\/g, '/');
+      lines.push('\x5cbegin{figure}[h]');
+      lines.push('\x5ccentering');
+      lines.push(`\x5cincludegraphics[width=\x5ctextwidth]{${rel}}`);
+      lines.push(`\x5ccaption{${model} prediction}`);
+      lines.push('\x5cend{figure}');
+    });
+  });
+  lines.push('\x5cend{document}');
+
+  const texPath = path.join(session.dir, 'report.tex');
+  await fs.promises.writeFile(texPath, lines.join('\n'));
+  spawnSync('pdflatex', ['-interaction=nonstopmode', 'report.tex'], { cwd: session.dir });
+  return path.join(session.dir, 'report.pdf');
+}
 
 /**
  * Controlador para la orquestación de modelos y predicciones
@@ -211,6 +293,13 @@ class OrchestratorController {
       const csv = `${headers.join(',')}\n${rows.join('\n')}`;
       archive.append(csv, { name: `stats/${model}.csv` });
     });
+
+    try {
+      const reportPath = await generateAutomatedReport(sessionId, session);
+      archive.file(reportPath, { name: 'report.pdf' });
+    } catch (e) {
+      logger.warn(`Failed to generate report: ${e.message}`);
+    }
 
     await archive.finalize();
 
