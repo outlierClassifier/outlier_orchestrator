@@ -12,6 +12,7 @@ describe('batch training session', () => {
         trainingUrl: 'http://localhost:9999/train'
       }
     };
+    orchestratorService.healthCheck = jest.fn().mockResolvedValue({ models: [{ model: 'test', status: 'online' }] });
   });
 
   afterEach(async () => {

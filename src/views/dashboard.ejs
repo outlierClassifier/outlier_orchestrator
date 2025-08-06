@@ -586,8 +586,9 @@
                 <div class="row">
                     <div class="col-md-12 mb-4">
                         <div class="card">
-                            <div class="card-header bg-primary text-white">
-                                Prediction
+                            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                                <span>Prediction</span>
+                                <button id="automatedPredictsBtn" class="btn btn-outline-light btn-sm">Automated predicts</button>
                             </div>
                             <div class="card-body">
                                 <div class="alert alert-info mb-3">
@@ -1126,7 +1127,39 @@
                 </div>
             </div>
         </div>
-    </div><!-- Fullscreen Chart Modal -->
+    </div>
+
+    <!-- Automated Predicts Modal -->
+    <div class="modal fade" id="automatedPredictsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Automated Predicts</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="automatedFolderInput" class="form-label">Prediction folder</label>
+                        <input type="file" class="form-control" id="automatedFolderInput" webkitdirectory multiple>
+                    </div>
+                    <div class="mb-3">
+                        <label for="autoGroupPattern" class="form-label">Grouping pattern</label>
+                        <input type="text" class="form-control" id="autoGroupPattern" placeholder="DES_(\\d+)">
+                    </div>
+                    <div class="mb-3">
+                        <label for="autoExclusionPattern" class="form-label">Exclusion pattern</label>
+                        <input type="text" class="form-control" id="autoExclusionPattern" placeholder=".*_backup\\.">
+                    </div>
+                    <div id="autoModelThresholds"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="applyAutomatedPredictsBtn" disabled>Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Fullscreen Chart Modal -->
     <div id="fullscreenModal" class="fullscreen-modal">
         <div class="fullscreen-modal-header">
             <div class="fullscreen-modal-title" id="fullscreenChartTitle">Chart Fullscreen View</div>
@@ -1158,11 +1191,16 @@
         let discharges = [];
         let dischargeCounter = 0;
         let modelDisplayNames = {};
-        
+        let currentModelStatus = {};
+
         // Multiple discharges modal variables
         let multipleDischargesModal;
         let selectedMultipleFiles = [];
         let multipleDischargePatternResults = null;
+
+        // Automated predicts variables
+        let automatedPredictsModal;
+        let selectedAutomatedFiles = [];
 
         function formatDate(date) {
             const d = new Date(date);
@@ -1808,6 +1846,97 @@
             }
         }
 
+        // Automated predicts functions
+        function showAutomatedPredictsModal() {
+            const container = document.getElementById('autoModelThresholds');
+            let html = '';
+            for (const [name, status] of Object.entries(currentModelStatus)) {
+                if (status.status === 'online') {
+                    const display = modelDisplayNames[name] || name;
+                    html += `
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">${display}</label>
+                            </div>
+                            <div class="col">
+                                <input type="number" step="any" class="form-control" id="just-${name}" placeholder="Justification threshold">
+                            </div>
+                            <div class="col">
+                                <input type="number" step="1" class="form-control" id="count-${name}" placeholder="Count threshold">
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            container.innerHTML = html;
+            document.getElementById('automatedFolderInput').value = '';
+            selectedAutomatedFiles = [];
+            document.getElementById('applyAutomatedPredictsBtn').disabled = true;
+            automatedPredictsModal.show();
+        }
+
+        async function handleAutomatedPredictFilesChange(event) {
+            const files = Array.from(event.target.files);
+            selectedAutomatedFiles = [];
+            for (const file of files) {
+                const content = await readFileAsText(file);
+                selectedAutomatedFiles.push({ name: file.name, content });
+            }
+            document.getElementById('applyAutomatedPredictsBtn').disabled = selectedAutomatedFiles.length === 0;
+        }
+
+        async function applyAutomatedPredicts() {
+            const groupPattern = document.getElementById('autoGroupPattern').value.trim();
+            const exclusionPattern = document.getElementById('autoExclusionPattern').value.trim();
+            if (!groupPattern) {
+                alert('Please enter a grouping pattern.');
+                return;
+            }
+            const dischargeRegex = new RegExp(groupPattern, 'i');
+            const exclusionRegex = exclusionPattern ? new RegExp(exclusionPattern, 'i') : null;
+            const groups = {};
+            selectedAutomatedFiles.forEach(file => {
+                if (exclusionRegex && exclusionRegex.test(file.name)) return;
+                const match = file.name.match(dischargeRegex);
+                if (!match || !match[1]) return;
+                const id = match[1];
+                if (!groups[id]) groups[id] = [];
+                groups[id].push({ name: file.name, content: file.content });
+            });
+            const predictions = [];
+            Object.entries(groups).forEach(([id, files]) => {
+                const data = processSignalFiles(files);
+                predictions.push({ name: id, content: data });
+            });
+            const thresholds = {};
+            for (const [name, status] of Object.entries(currentModelStatus)) {
+                if (status.status !== 'online') continue;
+                thresholds[name] = {
+                    justificationThreshold: document.getElementById(`just-${name}`).value,
+                    countThreshold: document.getElementById(`count-${name}`).value
+                };
+            }
+            const response = await fetch('/api/automated-predicts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ predictions, thresholds })
+            });
+            if (!response.ok) {
+                alert('Error executing automated predicts');
+                return;
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'automated_predicts.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            automatedPredictsModal.hide();
+        }
+
         // Process each discharge for training
         function renderModelConfig(models) {
             const configContainer = document.getElementById('modelConfigContainer');
@@ -2083,7 +2212,6 @@
 
             return appliedCount;
         }        // Socket event listeners
-        let currentModelStatus = {};
         socket.on('health-update', function(modelStatus) {
             currentModelStatus = modelStatus;
             const container = document.getElementById('modelsContainer');
@@ -2245,6 +2373,7 @@
             configModal = new bootstrap.Modal(document.getElementById('configModal'));
             filePreviewModal = new bootstrap.Modal(document.getElementById('filePreviewModal'));
             multipleDischargesModal = new bootstrap.Modal(document.getElementById('multipleDischargesModal'));
+            automatedPredictsModal = new bootstrap.Modal(document.getElementById('automatedPredictsModal'));
 
             fetch('/api/config')
                 .then(response => response.json())
@@ -2352,7 +2481,14 @@
                     document.getElementById('predictionResult').innerHTML = `Error: ${error.message}`;
                     document.getElementById('predictionResult').className = 'alert alert-danger';
                 }
-            });            // Event listener for the add discharge button
+            });
+
+            document.getElementById('automatedPredictsBtn').addEventListener('click', function () {
+                showAutomatedPredictsModal();
+            });
+            document.getElementById('automatedFolderInput').addEventListener('change', handleAutomatedPredictFilesChange);
+            document.getElementById('applyAutomatedPredictsBtn').addEventListener('click', applyAutomatedPredicts);
+            // Event listener for the add discharge button
             document.getElementById('addDischargeBtn').addEventListener('click', function () {
                 addDischarge();
             });

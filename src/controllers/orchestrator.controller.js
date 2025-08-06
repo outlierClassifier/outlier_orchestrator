@@ -52,6 +52,93 @@ class OrchestratorController {
   }
 
   /**
+   * Procesa múltiples predicciones de forma automatizada y devuelve un zip
+   * con las respuestas crudas y estadísticas por modelo.
+   */
+  async automatedPredicts(req, res) {
+    try {
+      const { predictions, thresholds = {} } = req.body || {};
+
+      if (!predictions || !Array.isArray(predictions) || predictions.length === 0) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Se requieren ficheros de predicción'
+        });
+      }
+
+      const JSZip = require('jszip');
+      const zip = new JSZip();
+      const rawFolder = zip.folder('raw');
+      const statsFolder = zip.folder('stats');
+
+      const stats = {};
+
+      for (const pred of predictions) {
+        const name = pred.name || `prediction_${stats.length}`;
+        const data = pred.content;
+
+        const result = await orchestratorService.orchestrate(data);
+        rawFolder.file(`${name}.json`, JSON.stringify(result, null, 2));
+
+        result.models.forEach(m => {
+          const modelName = m.modelName;
+          const j = m.result.justification;
+          if (!stats[modelName]) stats[modelName] = [];
+          const jThresh = thresholds[modelName] ? Number(thresholds[modelName].justificationThreshold) : null;
+          const cThresh = thresholds[modelName] ? Number(thresholds[modelName].countThreshold) : null;
+          const row = {
+            file: name,
+            justification: j,
+            justificationThreshold: jThresh != null && j != null ? (j > jThresh ? 1 : 0) : '',
+            countThreshold: 0,
+            cThresh
+          };
+          stats[modelName].push(row);
+        });
+      }
+
+      // Calcular count threshold
+      Object.keys(stats).forEach(model => {
+        const entries = stats[model];
+        const cThresh = entries[0] ? entries[0].cThresh : null;
+        if (!cThresh) {
+          entries.forEach(e => { e.countThreshold = ''; delete e.cThresh; });
+          return;
+        }
+        let streak = 0;
+        entries.forEach(e => {
+          if (e.justificationThreshold === 1) {
+            streak += 1;
+          } else {
+            streak = 0;
+          }
+          e.countThreshold = streak >= cThresh ? 1 : 0;
+          delete e.cThresh;
+        });
+      });
+
+      // Crear CSVs
+      Object.entries(stats).forEach(([model, entries]) => {
+        const lines = ['file,justification,justification_threshold,count_threshold'];
+        entries.forEach(e => {
+          lines.push(`${e.file},${e.justification},${e.justificationThreshold},${e.countThreshold}`);
+        });
+        statsFolder.file(`${model}.csv`, lines.join('\n'));
+      });
+
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      res.set('Content-Type', 'application/zip');
+      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+      return res.status(StatusCodes.OK).send(buffer);
+    } catch (error) {
+      logger.error(`Error en automated predicts: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: 'Error al procesar las predicciones',
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * Envía datos de entrenamiento a todos los modelos
    * @param {Request} req - Objeto de solicitud HTTP 
    * @param {Response} res - Objeto de respuesta HTTP
