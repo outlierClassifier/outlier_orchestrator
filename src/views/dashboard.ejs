@@ -540,6 +540,13 @@
             </div>
         </header>
 
+        <div id="automatedPredictProgressContainer" class="mb-3" style="display:none;">
+            <div class="progress">
+                <div id="automatedPredictProgressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <div id="automatedPredictGroupInfo" class="mt-2 text-center"></div>
+        </div>
+
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
@@ -1158,6 +1165,10 @@
                                 <strong>Files Selected:</strong>
                                 <span id="automatedFilesCount" class="file-count-preview">0 files</span>
                             </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>Groups Detected:</strong>
+                                <span id="automatedGroupCount" class="file-count-preview">0 groups</span>
+                            </div>
                             <div id="automatedFilesList" style="max-height:150px; overflow-y:auto;"></div>
                         </div>
                     </div>
@@ -1607,16 +1618,59 @@
             if (automatedFiles.length === 0) {
                 preview.style.display = 'none';
                 document.getElementById('automatedPredictsApplyBtn').disabled = true;
+                document.getElementById('automatedGroupCount').textContent = '0 groups';
                 return;
             }
             count.textContent = `${automatedFiles.length} files`;
             list.innerHTML = automatedFiles.map(f => `<div class="small text-muted">${f.name}</div>`).join('');
             preview.style.display = 'block';
-            document.getElementById('automatedPredictsApplyBtn').disabled = false;
+            updateAutomatedGroupsInfo();
+        }
+
+        function updateAutomatedGroupsInfo() {
+            const groupCountEl = document.getElementById('automatedGroupCount');
+            const applyBtn = document.getElementById('automatedPredictsApplyBtn');
+            if (automatedFiles.length === 0) {
+                groupCountEl.textContent = '0 groups';
+                applyBtn.disabled = true;
+                return;
+            }
+
+            const exclusionPattern = document.getElementById('automatedExclusionPattern').value.trim();
+            let exclusionRegex = null;
+            if (exclusionPattern) {
+                try { exclusionRegex = new RegExp(exclusionPattern, 'i'); } catch (e) {}
+            }
+            const groupPattern = document.getElementById('automatedGroupPattern').value.trim() || '(.*)';
+            let groupRegex;
+            try { groupRegex = new RegExp(groupPattern); } catch (e) {
+                groupCountEl.textContent = '0 groups';
+                applyBtn.disabled = true;
+                return;
+            }
+            const groups = {};
+            automatedFiles.forEach(f => {
+                if (exclusionRegex && exclusionRegex.test(f.name)) return;
+                const match = f.name.match(groupRegex);
+                const key = match ? (match[1] || match[0]) : f.name;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(f);
+            });
+            const groupCount = Object.keys(groups).length;
+            groupCountEl.textContent = `${groupCount} group${groupCount !== 1 ? 's' : ''}`;
+            applyBtn.disabled = groupCount === 0;
         }
 
         async function applyAutomatedPredicts() {
             const exclusionPattern = document.getElementById('automatedExclusionPattern').value.trim();
+            let exclusionRegex = null;
+            if (exclusionPattern) {
+                try { exclusionRegex = new RegExp(exclusionPattern, 'i'); } catch (e) {}
+            }
+            const groupPattern = document.getElementById('automatedGroupPattern').value.trim() || '(.*)';
+            let groupRegex;
+            try { groupRegex = new RegExp(groupPattern); } catch (e) { alert('Invalid grouping pattern'); return; }
+
             const thresholds = {};
             document.querySelectorAll('#automatedModelThresholds .justification-threshold').forEach(input => {
                 const model = input.dataset.model;
@@ -1627,15 +1681,52 @@
                 };
             });
 
-            const formData = new FormData();
-            automatedFiles.forEach(f => formData.append('files', f, f.name));
-            formData.append('exclusionPattern', exclusionPattern);
-            formData.append('thresholds', JSON.stringify(thresholds));
+            const sessionResp = await fetch('/api/automated-predicts/session', { method: 'POST' });
+            const { sessionId } = await sessionResp.json();
 
-            const response = await fetch('/api/automated-predicts', {
-                method: 'POST',
-                body: formData
+            const groups = {};
+            automatedFiles.forEach(f => {
+                if (exclusionRegex && exclusionRegex.test(f.name)) return;
+                const match = f.name.match(groupRegex);
+                const key = match ? (match[1] || match[0]) : f.name;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(f);
             });
+
+            const groupEntries = Object.entries(groups);
+            const totalGroups = groupEntries.length;
+            if (totalGroups === 0) {
+                alert('No files to process.');
+                return;
+            }
+
+            automatedPredictsModal.hide();
+            const progressContainer = document.getElementById('automatedPredictProgressContainer');
+            const progressBar = document.getElementById('automatedPredictProgressBar');
+            const progressText = document.getElementById('automatedPredictGroupInfo');
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', '0');
+            progressText.textContent = `Processing 0 of ${totalGroups} group(s)...`;
+
+            let processed = 0;
+            for (const [key, files] of groupEntries) {
+                const formData = new FormData();
+                files.forEach(f => formData.append('files', f, f.name));
+                formData.append('dischargeId', key);
+                formData.append('thresholds', JSON.stringify(thresholds));
+                await fetch(`/api/automated-predicts/session/${sessionId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                processed++;
+                const percent = Math.round((processed / totalGroups) * 100);
+                progressBar.style.width = `${percent}%`;
+                progressBar.setAttribute('aria-valuenow', String(percent));
+                progressText.textContent = `Processing ${processed} of ${totalGroups} group(s)...`;
+            }
+
+            const response = await fetch(`/api/automated-predicts/session/${sessionId}/zip`);
             if (!response.ok) {
                 try {
                     const err = await response.json();
@@ -1643,6 +1734,7 @@
                 } catch {
                     alert('Error processing predictions');
                 }
+                progressContainer.style.display = 'none';
                 return;
             }
             const blob = await response.blob();
@@ -1654,7 +1746,7 @@
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
-            automatedPredictsModal.hide();
+            progressContainer.style.display = 'none';
         }
 
         // Multiple Discharges Functions
@@ -2498,6 +2590,8 @@
             // Automated predicts events
             document.getElementById('automatedPredictsBtn').addEventListener('click', showAutomatedPredictsModal);
             document.getElementById('automatedPredictsFolder').addEventListener('change', handleAutomatedFolderChange);
+            document.getElementById('automatedGroupPattern').addEventListener('input', updateAutomatedGroupsInfo);
+            document.getElementById('automatedExclusionPattern').addEventListener('input', updateAutomatedGroupsInfo);
             document.getElementById('automatedPredictsApplyBtn').addEventListener('click', applyAutomatedPredicts);
 
             // Event listener for the toggle preview button
