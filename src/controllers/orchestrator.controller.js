@@ -112,15 +112,18 @@ class OrchestratorController {
       archive.pipe(res);
 
       for (const [key, groupFiles] of Object.entries(groups)) {
-        const discharge = { id: key, files: [] };
+        const fileData = [];
         for (const file of groupFiles) {
           try {
             const content = await fs.promises.readFile(file.path, 'utf8');
-            discharge.files.push({ name: file.originalname, content });
+            fileData.push({ name: file.originalname, content });
           } finally {
             fs.unlink(file.path, () => {});
           }
         }
+
+        const { signals, times, length } = orchestratorService.parseSensorFiles(fileData);
+        const discharge = { id: key, signals, times, length };
 
         const result = await orchestratorService.orchestrate({ discharges: [discharge] });
         const safeName = key.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -177,7 +180,7 @@ class OrchestratorController {
   }
 
   /**
-   * Process a single prediction file for a session
+   * Process a batch of prediction files for a session
    * @param {Request} req
    * @param {Response} res
    */
@@ -197,15 +200,18 @@ class OrchestratorController {
     const dischargeId = req.body.dischargeId || files[0].originalname;
 
     try {
-      const discharge = { id: dischargeId, files: [] };
+      const fileData = [];
       for (const f of files) {
         try {
           const content = await fs.promises.readFile(f.path, 'utf8');
-          discharge.files.push({ name: f.originalname, content });
+          fileData.push({ name: f.originalname, content });
         } finally {
           fs.unlink(f.path, () => {});
         }
       }
+
+      const { signals, times, length } = orchestratorService.parseSensorFiles(fileData);
+      const discharge = { id: dischargeId, signals, times, length };
 
       const result = await orchestratorService.orchestrate({ discharges: [discharge] });
 
