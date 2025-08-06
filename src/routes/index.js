@@ -8,6 +8,7 @@ const router = express.Router();
 
 // Ruta para realizar predicciones
 router.post('/predict', validatedischargealData, orchestratorController.predict);
+router.post('/automated-predicts', upload.any(), orchestratorController.automatedPredicts);
 
 // Ruta para entrenamiento de modelos
 router.post('/train', validatedischargealData, orchestratorController.train);

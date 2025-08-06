@@ -2,6 +2,7 @@ const { StatusCodes } = require('http-status-codes');
 const orchestratorService = require('../services/orchestrator.service');
 const logger = require('../utils/logger');
 const config = require('../config');
+const archiver = require('archiver');
 
 /**
  * Controlador para la orquestación de modelos y predicciones
@@ -46,6 +47,96 @@ class OrchestratorController {
       logger.error(`Error en predicción: ${error.message}`);
       return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
         error: 'Error al procesar la predicción',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Ejecuta múltiples predicciones de forma automática y genera un ZIP
+   * con los resultados crudos y estadísticas por modelo
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async automatedPredicts(req, res) {
+    try {
+      const files = req.files || [];
+      if (files.length === 0) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'No prediction files uploaded'
+        });
+      }
+
+      const thresholds = req.body.thresholds ? JSON.parse(req.body.thresholds) : {};
+      const exclusionPattern = req.body.exclusionPattern;
+      let exclusionRegex = null;
+      if (exclusionPattern) {
+        try {
+          exclusionRegex = new RegExp(exclusionPattern, 'i');
+        } catch (e) {
+          logger.warn(`Invalid exclusion pattern: ${e.message}`);
+        }
+      }
+
+      const filtered = files.filter(f => !(exclusionRegex && exclusionRegex.test(f.originalname)));
+      const results = [];
+      const stats = {};
+
+      for (const file of filtered) {
+        let data;
+        try {
+          data = JSON.parse(file.buffer.toString('utf8'));
+        } catch (e) {
+          logger.warn(`Invalid JSON in ${file.originalname}: ${e.message}`);
+          continue;
+        }
+
+        const result = await orchestratorService.orchestrate(data);
+        results.push({ file: file.originalname, result });
+
+        (result.models || []).forEach(modelResp => {
+          const name = modelResp.modelName;
+          const justification = modelResp.result && modelResp.result.justification !== undefined ?
+            modelResp.result.justification : 0;
+
+          const cfg = thresholds[name] || {};
+          const justThresh = parseFloat(cfg.justification) || 0;
+          const countThresh = parseInt(cfg.count) || 1;
+
+          if (!stats[name]) {
+            stats[name] = { rows: [], passes: [], count: countThresh };
+          }
+
+          const pass = justification > justThresh ? 1 : 0;
+          stats[name].passes.push(pass);
+          const history = stats[name].passes;
+          const countPass = history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
+          stats[name].rows.push({ justification, justification_threshold: pass, count_threshold: countPass });
+        });
+      }
+
+      res.set('Content-Type', 'application/zip');
+      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+
+      const archive = archiver('zip');
+      archive.on('error', err => { throw err; });
+      archive.pipe(res);
+
+      results.forEach(r => {
+        archive.append(JSON.stringify(r.result, null, 2), { name: `raw/${r.file}` });
+      });
+
+      Object.entries(stats).forEach(([model, data]) => {
+        let csv = 'justification,justification_threshold,count_threshold\n';
+        csv += data.rows.map(row => `${row.justification},${row.justification_threshold},${row.count_threshold}`).join('\n');
+        archive.append(csv, { name: `stats/${model}.csv` });
+      });
+
+      await archive.finalize();
+    } catch (error) {
+      logger.error(`Error en automated predicts: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: 'Error al procesar las predicciones automáticas',
         message: error.message
       });
     }
