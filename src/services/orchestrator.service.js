@@ -134,14 +134,13 @@ class OrchestratorService {
    * @returns {Object} Resumen de los modelos que aceptaron el entrenamiento
    */
   async startTrainingSession(totalDischarges, autoFinish = true) {
-    const enabledModels = Object.keys(this.models)
-      .filter(model => this.models[model].enabled);
+    const health = await this.healthCheck();
+    const online = health.models.filter(m => m.status === 'online');
+    const offline = health.models.filter(m => m.status !== 'online');
 
-    logger.info(`Enabled models for training: ${enabledModels.join(', ')}`);
-
-    if (enabledModels.length === 0) {
-      logger.error('No models are enabled');
-      throw new Error('No models are enabled for training');
+    if (online.length === 0) {
+      logger.error('No models are online for training');
+      throw new Error('No models are online for training');
     }
 
     const timeoutSeconds = Math.ceil(this.trainingTimeout / 1000);
@@ -149,7 +148,13 @@ class OrchestratorService {
     const details = [];
     let successful = 0;
 
-    for (const modelName of enabledModels) {
+    offline.forEach(m => {
+      if (this.models[m.model].enabled) {
+        details.push({ modelName: m.model, status: m.status, error: m.error });
+      }
+    });
+
+    for (const { model: modelName } of online) {
       const modelConfig = this.models[modelName];
       try {
         await axios({
