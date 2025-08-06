@@ -12,7 +12,7 @@ const router = express.Router();
 router.post('/predict', validatedischargealData, orchestratorController.predict);
 router.post('/automated-predicts', diskUpload.any(), orchestratorController.automatedPredicts);
 router.post('/automated-predicts/session', orchestratorController.startAutomatedPredictsSession);
-router.post('/automated-predicts/session/:sessionId', diskUpload.single('file'), orchestratorController.uploadAutomatedPredict);
+router.post('/automated-predicts/session/:sessionId', diskUpload.any(), orchestratorController.uploadAutomatedPredict);
 router.get('/automated-predicts/session/:sessionId/zip', orchestratorController.finalizeAutomatedPredicts);
 
 // Ruta para entrenamiento de modelos

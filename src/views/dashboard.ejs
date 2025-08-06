@@ -1621,6 +1621,10 @@
             if (exclusionPattern) {
                 try { exclusionRegex = new RegExp(exclusionPattern, 'i'); } catch (e) {}
             }
+            const groupPattern = document.getElementById('automatedGroupPattern').value.trim() || '(.*)';
+            let groupRegex;
+            try { groupRegex = new RegExp(groupPattern); } catch (e) { alert('Invalid grouping pattern'); return; }
+
             const thresholds = {};
             document.querySelectorAll('#automatedModelThresholds .justification-threshold').forEach(input => {
                 const model = input.dataset.model;
@@ -1634,10 +1638,19 @@
             const sessionResp = await fetch('/api/automated-predicts/session', { method: 'POST' });
             const { sessionId } = await sessionResp.json();
 
-            for (const f of automatedFiles) {
-                if (exclusionRegex && exclusionRegex.test(f.name)) continue;
+            const groups = {};
+            automatedFiles.forEach(f => {
+                if (exclusionRegex && exclusionRegex.test(f.name)) return;
+                const match = f.name.match(groupRegex);
+                const key = match ? (match[1] || match[0]) : f.name;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(f);
+            });
+
+            for (const [key, files] of Object.entries(groups)) {
                 const formData = new FormData();
-                formData.append('file', f, f.name);
+                files.forEach(f => formData.append('files', f, f.name));
+                formData.append('dischargeId', key);
                 formData.append('thresholds', JSON.stringify(thresholds));
                 await fetch(`/api/automated-predicts/session/${sessionId}`, {
                     method: 'POST',

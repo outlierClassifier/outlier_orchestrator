@@ -85,7 +85,23 @@ class OrchestratorController {
         }
       }
 
+      const groupPattern = req.body.groupPattern || '(.*)';
+      let groupRegex;
+      try {
+        groupRegex = new RegExp(groupPattern);
+      } catch (e) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid grouping pattern' });
+      }
+
       const filtered = files.filter(f => !(exclusionRegex && exclusionRegex.test(f.originalname)));
+      const groups = {};
+      filtered.forEach(f => {
+        const match = f.originalname.match(groupRegex);
+        const key = match ? (match[1] || match[0]) : f.originalname;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(f);
+      });
+
       const stats = {};
 
       res.set('Content-Type', 'application/zip');
@@ -95,20 +111,20 @@ class OrchestratorController {
       archive.on('error', err => { throw err; });
       archive.pipe(res);
 
-      for (const file of filtered) {
-        let data;
-        try {
-          const content = await fs.promises.readFile(file.path, 'utf8');
-          data = JSON.parse(content);
-        } catch (e) {
-          logger.warn(`Invalid JSON in ${file.originalname}: ${e.message}`);
-          continue;
-        } finally {
-          fs.unlink(file.path, () => {});
+      for (const [key, groupFiles] of Object.entries(groups)) {
+        const discharge = { id: key, files: [] };
+        for (const file of groupFiles) {
+          try {
+            const content = await fs.promises.readFile(file.path, 'utf8');
+            discharge.files.push({ name: file.originalname, content });
+          } finally {
+            fs.unlink(file.path, () => {});
+          }
         }
 
-        const result = await orchestratorService.orchestrate(data);
-        archive.append(JSON.stringify(result, null, 2), { name: `raw/${file.originalname}` });
+        const result = await orchestratorService.orchestrate({ discharges: [discharge] });
+        const safeName = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+        archive.append(JSON.stringify(result, null, 2), { name: `raw/${safeName}.json` });
 
         (result.models || []).forEach(modelResp => {
           const name = modelResp.modelName;
@@ -172,20 +188,30 @@ class OrchestratorController {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
     }
 
-    const file = req.file;
-    if (!file) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'No prediction file uploaded' });
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'No prediction files uploaded' });
     }
 
     const thresholds = req.body.thresholds ? JSON.parse(req.body.thresholds) : {};
+    const dischargeId = req.body.dischargeId || files[0].originalname;
 
     try {
-      const content = await fs.promises.readFile(file.path, 'utf8');
-      const data = JSON.parse(content);
-      const result = await orchestratorService.orchestrate(data);
+      const discharge = { id: dischargeId, files: [] };
+      for (const f of files) {
+        try {
+          const content = await fs.promises.readFile(f.path, 'utf8');
+          discharge.files.push({ name: f.originalname, content });
+        } finally {
+          fs.unlink(f.path, () => {});
+        }
+      }
+
+      const result = await orchestratorService.orchestrate({ discharges: [discharge] });
 
       const rawDir = path.join(session.dir, 'raw');
-      await fs.promises.writeFile(path.join(rawDir, file.originalname), JSON.stringify(result, null, 2));
+      const safeName = dischargeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await fs.promises.writeFile(path.join(rawDir, `${safeName}.json`), JSON.stringify(result, null, 2));
 
       (result.models || []).forEach(modelResp => {
         const name = modelResp.modelName;
@@ -209,13 +235,11 @@ class OrchestratorController {
 
       res.json({ ok: true });
     } catch (error) {
-      logger.warn(`Error processing ${file.originalname}: ${error.message}`);
+      logger.warn(`Error processing discharge ${dischargeId}: ${error.message}`);
       return res.status(StatusCodes.BAD_REQUEST).json({
-        error: 'Invalid prediction file',
+        error: 'Invalid prediction files',
         message: error.message
       });
-    } finally {
-      fs.unlink(file.path, () => {});
     }
   }
 
