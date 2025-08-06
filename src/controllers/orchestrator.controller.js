@@ -131,9 +131,6 @@ class OrchestratorController {
 
         (result.models || []).forEach(modelResp => {
           const name = modelResp.modelName;
-          const justification = modelResp.result && modelResp.result.justification !== undefined ?
-            parseFloat(modelResp.result.justification) : 0;
-
           const cfg = thresholds[name] || {};
           const justThresh = parseFloat(cfg.justification) || 0;
           const countThresh = parseInt(cfg.count) || 1;
@@ -142,23 +139,39 @@ class OrchestratorController {
             stats[name] = { entries: [], passes: [], count: countThresh };
           }
 
-          const pass = justification > justThresh ? 1 : 0;
-          stats[name].passes.push(pass);
-          const history = stats[name].passes;
-          const countPass = history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
-          stats[name].entries.push({ id: key, justification, justification_threshold: pass, count_threshold: countPass });
+          const justifications = Array.isArray(modelResp.result?.justifications)
+            ? modelResp.result.justifications.map(j => parseFloat(j))
+            : modelResp.result && modelResp.result.justification !== undefined
+              ? [parseFloat(modelResp.result.justification)]
+              : [];
+
+          justifications.forEach(justification => {
+            const pass = justification > justThresh ? 1 : 0;
+            stats[name].passes.push(pass);
+            const history = stats[name].passes;
+            const countPass =
+              history.length >= countThresh &&
+              history.slice(-countThresh).every(v => v === 1)
+                ? 1
+                : 0;
+            stats[name].entries.push({
+              id: key,
+              justification,
+              justification_threshold: pass,
+              count_threshold: countPass
+            });
+          });
         });
       }
 
       Object.entries(stats).forEach(([model, data]) => {
-        const headers = [];
-        const values = [];
-        data.entries.forEach(entry => {
-          const safeId = entry.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-          headers.push(`${safeId}_justification`, `${safeId}_justification_threshold`, `${safeId}_count_threshold`);
-          values.push(entry.justification, entry.justification_threshold, entry.count_threshold);
-        });
-        const csv = `${headers.join(',')}\n${values.join(',')}`;
+        const rows = data.entries
+          .map(e => {
+            const safeId = e.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+            return `${safeId},${e.justification},${e.justification_threshold},${e.count_threshold}`;
+          })
+          .join('\n');
+        const csv = `discharge_id,justification,justification_threshold,count_threshold\n${rows}`;
         archive.append(csv, { name: `stats/${model}.csv` });
       });
 
@@ -227,9 +240,6 @@ class OrchestratorController {
 
       (result.models || []).forEach(modelResp => {
         const name = modelResp.modelName;
-        const justification = modelResp.result && modelResp.result.justification !== undefined ?
-          parseFloat(modelResp.result.justification) : 0;
-
         const cfg = thresholds[name] || {};
         const justThresh = parseFloat(cfg.justification) || 0;
         const countThresh = parseInt(cfg.count) || 1;
@@ -238,11 +248,28 @@ class OrchestratorController {
           session.stats[name] = { entries: [], passes: [], count: countThresh };
         }
 
-        const pass = justification > justThresh ? 1 : 0;
-        session.stats[name].passes.push(pass);
-        const history = session.stats[name].passes;
-        const countPass = history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
-        session.stats[name].entries.push({ id: dischargeId, justification, justification_threshold: pass, count_threshold: countPass });
+        const justifications = Array.isArray(modelResp.result?.justifications)
+          ? modelResp.result.justifications.map(j => parseFloat(j))
+          : modelResp.result && modelResp.result.justification !== undefined
+            ? [parseFloat(modelResp.result.justification)]
+            : [];
+
+        justifications.forEach(justification => {
+          const pass = justification > justThresh ? 1 : 0;
+          session.stats[name].passes.push(pass);
+          const history = session.stats[name].passes;
+          const countPass =
+            history.length >= countThresh &&
+            history.slice(-countThresh).every(v => v === 1)
+              ? 1
+              : 0;
+          session.stats[name].entries.push({
+            id: dischargeId,
+            justification,
+            justification_threshold: pass,
+            count_threshold: countPass
+          });
+        });
       });
 
       res.json({ ok: true });
@@ -280,14 +307,13 @@ class OrchestratorController {
     }
 
     Object.entries(session.stats).forEach(([model, data]) => {
-      const headers = [];
-      const values = [];
-      data.entries.forEach(entry => {
-        const safeId = entry.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-        headers.push(`${safeId}_justification`, `${safeId}_justification_threshold`, `${safeId}_count_threshold`);
-        values.push(entry.justification, entry.justification_threshold, entry.count_threshold);
-      });
-      const csv = `${headers.join(',')}\n${values.join(',')}`;
+      const rows = data.entries
+        .map(e => {
+          const safeId = e.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+          return `${safeId},${e.justification},${e.justification_threshold},${e.count_threshold}`;
+        })
+        .join('\n');
+      const csv = `discharge_id,justification,justification_threshold,count_threshold\n${rows}`;
       archive.append(csv, { name: `stats/${model}.csv` });
     });
 
