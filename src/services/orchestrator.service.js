@@ -352,9 +352,9 @@ class OrchestratorService {
       logger.error('Formato de datos inválido: se espera un objeto con array "discharges"');
       throw new Error('Formato de datos inválido: se espera un objeto con array "discharges"');
     }
-    
-    logger.info(`Procesando predicción con ${data.discharges.length} descargas`);
-    
+
+    logger.info(`Processing predictions with ${data.discharges.length} discharges`);
+
     const enabledModels = Object.keys(this.models)
       .filter(model => this.models[model].enabled);
     

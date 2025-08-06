@@ -60,152 +60,6 @@ class OrchestratorController {
   }
 
   /**
-   * Ejecuta múltiples predicciones de forma automática y genera un ZIP
-   * con los resultados crudos y estadísticas por modelo
-   * @param {Request} req
-   * @param {Response} res
-   */
-  async automatedPredicts(req, res) {
-    try {
-      const files = req.files || [];
-      if (files.length === 0) {
-        return res.status(StatusCodes.BAD_REQUEST).json({
-          error: 'No prediction files uploaded'
-        });
-      }
-
-      const thresholds = req.body.thresholds ? JSON.parse(req.body.thresholds) : {};
-      const exclusionPattern = req.body.exclusionPattern;
-      let exclusionRegex = null;
-      if (exclusionPattern) {
-        try {
-          exclusionRegex = new RegExp(exclusionPattern, 'i');
-        } catch (e) {
-          logger.warn(`Invalid exclusion pattern: ${e.message}`);
-        }
-      }
-
-      const groupPattern = req.body.groupPattern || '(.*)';
-      let groupRegex;
-      try {
-        groupRegex = new RegExp(groupPattern);
-      } catch (e) {
-        return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid grouping pattern' });
-      }
-
-      const filtered = files.filter(f => !(exclusionRegex && exclusionRegex.test(f.originalname)));
-      const groups = {};
-      filtered.forEach(f => {
-        const match = f.originalname.match(groupRegex);
-        const key = match ? (match[1] || match[0]) : f.originalname;
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(f);
-      });
-
-      const stats = {};
-
-      res.set('Content-Type', 'application/zip');
-      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
-
-      const archive = archiver('zip');
-      archive.on('error', err => { throw err; });
-      archive.pipe(res);
-
-      for (const [key, groupFiles] of Object.entries(groups)) {
-        const fileData = [];
-        for (const file of groupFiles) {
-          try {
-            const content = await fs.promises.readFile(file.path, 'utf8');
-            fileData.push({ name: file.originalname, content });
-          } finally {
-            fs.unlink(file.path, () => {});
-          }
-        }
-
-        const { signals, times, length } = orchestratorService.parseSensorFiles(fileData);
-        const discharge = { id: key, signals, times, length };
-
-        const result = await orchestratorService.orchestrate({ discharges: [discharge] });
-        const safeName = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-        archive.append(JSON.stringify(result, null, 2), { name: `raw/${safeName}.json` });
-
-        (result.models || []).forEach(modelResp => {
-          const name = modelResp.modelName;
-          const cfg = thresholds[name] || {};
-          const justThresh = parseFloat(cfg.justification) || 0;
-          const countThresh = parseInt(cfg.count) || 1;
-
-          const rawJust = modelResp.result && modelResp.result.justification;
-          const justArray = Array.isArray(rawJust)
-            ? rawJust.map(v => parseFloat(v))
-            : rawJust !== undefined && rawJust !== null
-              ? [parseFloat(rawJust)]
-              : [];
-
-          if (!stats[name]) {
-            stats[name] = { discharges: {}, dischargeIds: [], count: countThresh };
-          }
-          if (!stats[name].discharges[key]) {
-            stats[name].discharges[key] = { justifications: [], thresholds: [], count_thresholds: [] };
-            stats[name].dischargeIds.push(key);
-          }
-
-          const dStats = stats[name].discharges[key];
-          justArray.forEach(justification => {
-            const pass = justification > justThresh ? 1 : 0;
-            dStats.justifications.push(justification);
-            dStats.thresholds.push(pass);
-            const history = dStats.thresholds;
-            const countPass =
-              history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
-            dStats.count_thresholds.push(countPass);
-          });
-        });
-      }
-
-      Object.entries(stats).forEach(([model, data]) => {
-        const headers = [];
-        data.dischargeIds.forEach(id => {
-          const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
-          headers.push(
-            `${safeId}_justification`,
-            `${safeId}_justification_threshold`,
-            `${safeId}_count_threshold`
-          );
-        });
-
-        const maxRows = Math.max(
-          0,
-          ...data.dischargeIds.map(id => data.discharges[id].justifications.length)
-        );
-        const rows = [];
-        for (let i = 0; i < maxRows; i++) {
-          const row = [];
-          data.dischargeIds.forEach(id => {
-            const d = data.discharges[id];
-            row.push(
-              d.justifications[i] !== undefined ? d.justifications[i] : '',
-              d.thresholds[i] !== undefined ? d.thresholds[i] : '',
-              d.count_thresholds[i] !== undefined ? d.count_thresholds[i] : ''
-            );
-          });
-          rows.push(row.join(','));
-        }
-        const csv = `${headers.join(',')}\n${rows.join('\n')}`;
-        archive.append(csv, { name: `stats/${model}.csv` });
-      });
-
-      await archive.finalize();
-    } catch (error) {
-      logger.error(`Error en automated predicts: ${error.message}`);
-      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-        error: 'Error al procesar las predicciones automáticas',
-        message: error.message
-      });
-    }
-  }
-
-  /**
    * Start a session for sequential automated predictions
    * @param {Request} _req
    * @param {Response} res
@@ -265,11 +119,12 @@ class OrchestratorController {
         const countThresh = parseInt(cfg.count) || 1;
 
         const rawJust = modelResp.result && modelResp.result.justification;
-        const justArray = Array.isArray(rawJust)
-          ? rawJust.map(v => parseFloat(v))
-          : rawJust !== undefined && rawJust !== null
-            ? [parseFloat(rawJust)]
-            : [];
+        const justArray = modelResp.result && modelResp.result.windows 
+          ? modelResp.result.windows
+              .map(window => window.justification)
+              .filter(justification => justification !== undefined && justification !== null)
+              .map(justification => parseFloat(justification))
+          : [];
 
         if (!session.stats[name]) {
           session.stats[name] = { discharges: {}, dischargeIds: [], count: countThresh };
