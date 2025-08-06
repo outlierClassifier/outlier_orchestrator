@@ -54,13 +54,16 @@ class SensorData {
    * Convierte a formato JSON para enviar a la API
    */
   toJSON() {
-    return {
-      fileName: this.fileName,
-      times: this.times,
-      values: this.values,
-      length: this.length,
-      anomalyTime: this.anomalyTime
+    const obj = {
+      filename: this.fileName,
+      values: this.values
     };
+
+    if (this.anomalyTime !== null && this.anomalyTime !== undefined) {
+      obj.anomalyTime = this.anomalyTime;
+    }
+
+    return obj;
   }
 }
 

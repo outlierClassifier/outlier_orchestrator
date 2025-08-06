@@ -75,14 +75,34 @@ class OrchestratorController {
       }
       
       logger.info(`Recibida petición de entrenamiento con ${trainingData.discharges.length} descargas`);
-      
+
       try {
-        // Enviar datos de entrenamiento a todos los modelos
-        const result = await orchestratorService.trainModels(trainingData);
-        
+        let summary;
+        if (!orchestratorService.trainingSession) {
+          const hasTotal = typeof trainingData.totalDischarges === 'number';
+          const total = hasTotal ? trainingData.totalDischarges : trainingData.discharges.length;
+          summary = await orchestratorService.startTrainingSession(total, hasTotal);
+        } else if (!orchestratorService.trainingSession.autoFinish && typeof trainingData.totalDischarges === 'number') {
+          orchestratorService.trainingSession.autoFinish = true;
+          orchestratorService.trainingSession.totalDischarges = trainingData.totalDischarges;
+        } else if (orchestratorService.trainingSession.autoFinish) {
+          if (trainingData.totalDischarges && trainingData.totalDischarges > orchestratorService.trainingSession.totalDischarges) {
+            orchestratorService.trainingSession.totalDischarges = trainingData.totalDischarges;
+          }
+        } else {
+          orchestratorService.trainingSession.totalDischarges += trainingData.discharges.length;
+        }
+        await orchestratorService.sendTrainingBatch(trainingData.discharges);
+
+        if (orchestratorService.trainingSession &&
+            orchestratorService.trainingSession.autoFinish &&
+            orchestratorService.trainingSession.enqueued >= orchestratorService.trainingSession.totalDischarges) {
+          orchestratorService.finishTraining();
+        }
+
         return res.status(StatusCodes.OK).json({
-          message: 'Entrenamiento iniciado correctamente',
-          details: result
+          message: 'Entrenamiento batch procesado correctamente',
+          details: summary
         });
       } catch (error) {
         logger.error(`Error al enviar datos a modelos: ${error.message}`);
@@ -96,6 +116,102 @@ class OrchestratorController {
       return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
         error: 'Error al procesar la petición de entrenamiento',
         message: error.message
+      });
+    }
+  }
+
+  /**
+   * Procesa descargas en bruto y las envía a los modelos para entrenamiento
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async trainRaw(req, res) {
+    try {
+      const meta = req.body.metadata ? JSON.parse(req.body.metadata) : null;
+
+      if (!meta || !Array.isArray(meta.discharges) || meta.discharges.length === 0) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Discharge metadata is required'
+        });
+      }
+
+      const discharges = meta.discharges.map((d, idx) => ({
+        id: d.id || `discharge_${idx + 1}`,
+        anomalyTime: d.anomalyTime !== undefined ? d.anomalyTime : null,
+        files: []
+      }));
+
+      for (const file of req.files || []) {
+        const match = file.fieldname.match(/^discharge(\d+)$/);
+        if (match) {
+          const index = parseInt(match[1], 10);
+          if (discharges[index]) {
+            discharges[index].files.push({
+              name: file.originalname,
+              buffer: file.buffer
+            });
+          }
+        }
+      }
+
+      let summary;
+      if (!orchestratorService.trainingSession) {
+        const hasTotal = typeof meta.totalDischarges === 'number';
+        const total = hasTotal ? meta.totalDischarges : discharges.length;
+        summary = await orchestratorService.startTrainingSession(total, hasTotal);
+      } else if (!orchestratorService.trainingSession.autoFinish && typeof meta.totalDischarges === 'number') {
+        orchestratorService.trainingSession.autoFinish = true;
+        orchestratorService.trainingSession.totalDischarges = meta.totalDischarges;
+      } else if (orchestratorService.trainingSession.autoFinish) {
+        if (meta.totalDischarges && meta.totalDischarges > orchestratorService.trainingSession.totalDischarges) {
+          orchestratorService.trainingSession.totalDischarges = meta.totalDischarges;
+        }
+      } else {
+        orchestratorService.trainingSession.totalDischarges += discharges.length;
+      }
+
+      await orchestratorService.sendTrainingBatch(discharges);
+
+      if (orchestratorService.trainingSession &&
+          orchestratorService.trainingSession.autoFinish &&
+          orchestratorService.trainingSession.enqueued >= orchestratorService.trainingSession.totalDischarges) {
+        orchestratorService.finishTraining();
+      }
+
+      return res.status(StatusCodes.OK).json({
+        message: 'Entrenamiento batch procesado correctamente',
+        details: summary
+      });
+    } catch (error) {
+      logger.error(`Error en entrenamiento raw: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: 'Error al procesar la petición de entrenamiento',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Recibe el resumen de entrenamiento de un nodo
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async trainingCompleted(req, res) {
+    try {
+      const data = req.body;
+
+      if (!data || !data.status) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: 'Formato de TrainingResponse inválido'
+        });
+      }
+
+      const entry = orchestratorService.handleTrainingCompleted(data);
+      return res.status(StatusCodes.OK).json({ message: 'Training summary stored', entry });
+    } catch (error) {
+      logger.error(`Error en trainingCompleted: ${error.message}`);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        error: error.message
       });
     }
   }

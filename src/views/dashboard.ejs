@@ -525,7 +525,7 @@
                             <path fill-rule="evenodd"
                                 d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z" />
                         </svg>
-                        Actualizar Estado
+                        Update Status
                     </button>
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#configModal">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
@@ -534,7 +534,7 @@
                             <path
                                 d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z" />
                         </svg>
-                        Configurar
+                        Configure
                     </button>
                 </div>
             </div>
@@ -689,12 +689,6 @@
                                             type="button" role="tab" aria-controls="training-text-files-content"
                                             aria-selected="true">Text files</button>
                                     </li>
-                                    <li class="nav-item" role="presentation">
-                                        <button class="nav-link" id="training-json-input-tab" data-bs-toggle="pill"
-                                            data-bs-target="#training-json-input-content" type="button" role="tab"
-                                            aria-controls="training-json-input-content"
-                                            aria-selected="false">JSON</button>
-                                    </li>
                                 </ul>
 
                                 <div class="tab-content" id="trainingOptionsContent">
@@ -741,18 +735,6 @@
                                                     class="card-header d-flex justify-content-between align-items-center">
                                                     <span>JSON Preview</span>
                                                     <div>
-                                                        <button class="btn btn-sm btn-outline-success me-2"
-                                                            id="downloadJsonBtn">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16"
-                                                                height="16" fill="currentColor" class="bi bi-download"
-                                                                viewBox="0 0 16 16">
-                                                                <path
-                                                                    d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
-                                                                <path
-                                                                    d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
-                                                            </svg>
-                                                            Download JSON
-                                                        </button>
                                                         <button class="btn btn-sm btn-outline-secondary"
                                                             id="togglePreviewBtn">
                                                             Show/Hide Preview
@@ -776,27 +758,6 @@
                                         </div>
                                     </div>
 
-                                    <!-- JSON input option for training -->
-                                    <div class="tab-pane fade" id="training-json-input-content" role="tabpanel"
-                                        aria-labelledby="training-json-input-tab">
-                                        <div class="mb-3">
-                                            <label class="form-label">Upload JSON</label>
-                                            <div class="d-flex">
-                                                <input type="file" class="form-control" id="trainingFile"
-                                                    accept=".json">
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="trainingDataTextarea" class="form-label">Data (JSON
-                                                format)</label>
-                                            <textarea class="form-control" id="trainingDataTextarea" rows="8"
-                                                placeholder='{ "signals": [{ "fileName": "sensor1.txt", "times": [41.052, 41.054, ...], "values": [-759337, -760461, ...], "length": 5, "anomalyTime": 41.056 }] }'></textarea>
-                                        </div>
-                                        <div class="d-grid">
-                                            <button id="startTrainingBtn" class="btn btn-warning">Start
-                                                Training</button>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 <div id="trainingResultContainer" class="mt-3" style="display: none;">
@@ -1064,7 +1025,7 @@
                             </div>
                         </div>
                         <div class="tab-pane fade" id="raw-view" role="tabpanel" aria-labelledby="raw-tab">
-                            < id="filePreviewContent" class="bg-light p-3 rounded"
+                            <pre id="filePreviewContent" class="bg-light p-3 rounded"
                                 style="max-height: 400px; overflow: auto;"></pre>
                         </div>
                     </div>
@@ -1274,21 +1235,30 @@
                 const confidenceWidth = prediction.confidence ? (prediction.confidence * 100) : 0;
 
                 return `
-                    <div class="prediction-item prediction-class-${predClass}" 
-                         data-index="${index}" 
+                    <div class="prediction-item prediction-class-${predClass}"
+                         data-index="${index}"
                          onclick="showPredictionDetails(${index})">
                         <div class="d-flex justify-content-between">
                             <strong>Clase: ${predClass !== 'undefined' ? predClass : 'Undefined'}</strong>
                             <span class="timestamp">${formatDate(prediction.timestamp)}</span>
                         </div>
-                        
+
                         <div class="confidence-bar">
                             <div class="confidence-value" style="width: ${confidenceWidth}%"></div>
                         </div>
-                        
+
                         <div class="d-flex justify-content-between mt-2">
                             <small>Confianza: ${(prediction.confidence * 100).toFixed(1)}%</small>
                             <small>Votos: ${JSON.stringify(prediction.votes)}</small>
+                        </div>
+                        <div class="mt-2 text-end">
+                            <button class="btn btn-sm btn-outline-secondary" title="Download JSON"
+                                    onclick="downloadPrediction(${index}, event)">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
+                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 `;
@@ -1445,21 +1415,16 @@
             });
 
             container.querySelectorAll('.discharge-files-input').forEach(input => {
-                input.addEventListener('change', async function (e) {
+                input.addEventListener('change', function (e) {
                     const dischargeId = parseInt(this.getAttribute('data-discharge-id'));
                     const dischargeIndex = discharges.findIndex(d => d.id === dischargeId);
 
                     if (dischargeIndex !== -1 && e.target.files.length > 0) {
                         for (const file of e.target.files) {
-                            try {
-                                const content = await readFileAsText(file);
-                                discharges[dischargeIndex].files.push({
-                                    name: file.name,
-                                    content
-                                });
-                            } catch (error) {
-                                alert(`Error at reading file ${file.name}: ${error.message}`);
-                            }
+                            discharges[dischargeIndex].files.push({
+                                name: file.name,
+                                file
+                            });
                         }
 
                         renderDischarges();
@@ -1490,7 +1455,7 @@
 
                     if (dischargeIndex !== -1 && discharges[dischargeIndex].files[fileIndex]) {
                         const file = discharges[dischargeIndex].files[fileIndex];
-                        showFilePreview(file.name, file.content);
+                        showFilePreview(file.name, file.file);
                     }
                 });
             });
@@ -1549,112 +1514,14 @@
                 return;
             }
 
-            // Create data structure for the preview with optimized format
-            const previewData = { discharges: [] };
+            const previewData = {
+                discharges: discharges.map(d => ({
+                    id: d.id,
+                    anomalyTime: d.anomalyTime,
+                    files: d.files.map(f => f.name)
+                }))
+            };
 
-            // Process each discharge
-            discharges.forEach(discharge => {
-                if (discharge.files.length === 0) {
-                    return; // Skip discharges without files
-                }
-
-                let dischargeId = `discharge_${discharge.id + 1}`;
-
-                // Try to extract the identifier from the file name
-                if (discharge.files.length > 0) {
-                    const fileName = discharge.files[0].name;
-                    const match = fileName.match(/DES_(\d+)/i);
-                    if (match && match[1]) {
-                        dischargeId = match[1];
-                    }
-                }
-
-                const dischargeData = {
-                    id: dischargeId,
-                    signals: []
-                };
-
-                // Add anomaly time if defined
-                if (discharge.anomalyTime !== null) {
-                    dischargeData.anomalyTime = discharge.anomalyTime;
-                }
-
-                // Check if all files have the same times
-                let commonTimes = [];
-                let allSameTime = true;
-                let firstFileTimes = null;
-
-                // Take the first 5 lines for the preview
-                discharge.files.forEach((file, index) => {
-                    const lines = file.content.trim().split('\n');
-                    const previewLines = Math.min(5, lines.length);
-                    const times = [];
-
-                    for (let i = 0; i < previewLines; i++) {
-                        const parts = lines[i].trim().split(/\s+/);
-                        if (parts.length >= 2) {
-                            times.push(parseFloat(parts[0]));
-                        }
-                    }
-
-                    if (index === 0) {
-                        firstFileTimes = times;
-                    } else if (JSON.stringify(times) !== JSON.stringify(firstFileTimes)) {
-                        allSameTime = false;
-                    }
-                });
-
-                if (allSameTime && firstFileTimes) {
-                    dischargeData.times = firstFileTimes;
-                    const totalLines = discharge.files[0].content.trim().split('\n').length;
-                    dischargeData.length = totalLines;
-                    if (totalLines > 5) {
-                        dischargeData._previewNote = `... displaying 5 of ${totalLines} lines`;
-                    }
-                }
-
-                // Process each file
-                discharge.files.forEach(file => {
-                    try {
-                        const lines = file.content.trim().split('\n');
-                        const previewLines = Math.min(5, lines.length);
-                        const times = [];
-                        const values = [];
-
-                        for (let i = 0; i < previewLines; i++) {
-                            const line = lines[i].trim();
-                            const parts = line.split(/\s+/);
-                            if (parts.length >= 2) {
-                                if (!allSameTime) {
-                                    times.push(parseFloat(parts[0]));
-                                }
-                                values.push(parseFloat(parts[1]));
-                            }
-                        }
-
-                        const sensorData = {
-                            fileName: file.name,
-                            values: values
-                        };
-
-                        // Solo incluimos tiempos si no son comunes
-                        if (!allSameTime) {
-                            sensorData.times = times;
-                            const totalLines = file.content.trim().split('\n').length;
-                            sensorData.length = totalLines;
-                            if (totalLines > 5) {
-                                sensorData._previewNote = `... showing 5 of ${totalLines} lines`;
-                            }
-                        }
-
-                        dischargeData.signals.push(sensorData);
-                    } catch (error) {
-                        console.error(`Error processing file ${file.name}:`, error);
-                    }
-                });
-
-                previewData.discharges.push(dischargeData);
-            });            // Format the JSON for display
             document.getElementById('jsonPreview').textContent = JSON.stringify(previewData, null, 2);
         }
 
@@ -1674,20 +1541,13 @@
                 return;
             }
 
-            // Read all files
-            Promise.all(files.map(file => {
-                return readFileAsText(file).then(content => ({
-                    name: file.name,
-                    content: content,
-                    file: file
-                }));
-            })).then(filesData => {
-                selectedMultipleFiles = filesData;
-                updateMultipleDischargeFilesPreview();
-                document.getElementById('testPatternsBtn').disabled = false;
-            }).catch(error => {
-                alert(`Error reading files: ${error.message}`);
-            });
+            // Store file references only
+            selectedMultipleFiles = files.map(file => ({
+                name: file.name,
+                file: file
+            }));
+            updateMultipleDischargeFilesPreview();
+            document.getElementById('testPatternsBtn').disabled = false;
         }
 
         function updateMultipleDischargeFilesPreview() {
@@ -1829,7 +1689,7 @@
                     if (fileData) {
                         discharge.files.push({
                             name: fileData.name,
-                            content: fileData.content
+                            file: fileData.file
                         });
                     }
                 });
@@ -1881,8 +1741,7 @@
                     if (!dischargeGroups[dischargeId]) {
                         dischargeGroups[dischargeId] = {
                             id: dischargeId,
-                            files: [],
-                            commonTimes: null
+                            files: []
                         };
                     }
 
@@ -1892,7 +1751,6 @@
                 const discharges = [];
 
                 Object.values(dischargeGroups).forEach(group => {
-                    let allSameTime = true;
                     let firstFileTimes = null;
 
                     group.files.forEach((file, index) => {
@@ -1911,46 +1769,31 @@
 
                         if (index === 0) {
                             firstFileTimes = times;
-                        } else if (JSON.stringify(times) !== JSON.stringify(firstFileTimes)) {
-                            allSameTime = false;
                         }
                     });
 
                     const discharge = {
                         id: group.id,
-                        signals: []
+                        signals: [],
+                        times: firstFileTimes,
+                        length: firstFileTimes ? firstFileTimes.length : 0
                     };
-
-                    if (allSameTime && firstFileTimes && firstFileTimes.length > 0) {
-                        discharge.times = firstFileTimes;
-                        discharge.length = firstFileTimes.length;
-                    }
 
                     group.files.forEach(file => {
                         const lines = file.content.trim().split('\n');
                         const values = [];
-                        const times = [];
 
                         for (const line of lines) {
                             const parts = line.trim().split(/\s+/);
                             if (parts.length >= 2) {
-                                if (!allSameTime) {
-                                    times.push(parseFloat(parts[0]));
-                                }
                                 values.push(parseFloat(parts[1]));
                             }
                         }
 
                         const sensorData = {
-                            fileName: file.name,
+                            filename: file.name,
                             values: values
                         };
-
-                        // If times are not common, include them in the sensor data
-                        if (!allSameTime) {
-                            sensorData.times = times;
-                            sensorData.length = times.length;
-                        }
 
                         discharge.signals.push(sensorData);
                     });
@@ -1966,134 +1809,6 @@
         }
 
         // Process each discharge for training
-        function processDischargesForTraining() {
-            try {
-                if (discharges.length === 0) {
-                    throw new Error('No discharges to process');
-                }
-
-                const trainingData = { discharges: [] };
-
-                // Process each discharge as an independent discharge
-                discharges.forEach(discharge => {
-                    // Check if there are files
-                    if (discharge.files.length === 0) {
-                        console.warn(`Discharge #${discharge.id + 1} has no files`);
-                        return;
-                    }
-
-                    // Extract the discharge identifier from the file name if possible
-                    let dischargeId = `discharge_${discharge.id + 1}`;
-
-                    // Attempt to extract the identifier from the file name
-                    // Expected format: DES_XXXXX_YY where XXXXX is the discharge ID
-                    if (discharge.files.length > 0) {
-                        const fileName = discharge.files[0].name;
-                        const match = fileName.match(/DES_(\d+)/i);
-                        if (match && match[1]) {
-                            dischargeId = match[1];
-                        }
-                    }
-
-                    const dischargeData = {
-                        id: dischargeId,
-                        signals: []
-                    };
-
-                    if (discharge.anomalyTime !== null) {
-                        dischargeData.anomalyTime = discharge.anomalyTime;
-                    }
-
-                    let commonTimes = null;
-                    let firstFileTimes = null;
-                    let allSameTime = true;
-                    const values = [];
-
-                    // Process first all times to check if they are common
-                    discharge.files.forEach((file, index) => {
-                        const lines = file.content.trim().split('\n');
-                        const times = [];
-
-                        for (const line of lines) {
-                            const parts = line.trim().split(/\s+/);
-                            if (parts.length >= 2) {
-                                const time = parseFloat(parts[0]);
-                                const value = parseFloat(parts[1]);
-
-                                if (!isNaN(time) && !isNaN(value)) {
-                                    times.push(time);
-                                }
-                            }
-                        }
-
-                        if (index === 0) {
-                            firstFileTimes = times;
-                        } else if (JSON.stringify(times) !== JSON.stringify(firstFileTimes)) {
-                            allSameTime = false;
-                        }
-                    });
-
-                    if (allSameTime && firstFileTimes) {
-                        dischargeData.times = firstFileTimes;
-                        dischargeData.length = firstFileTimes.length;
-                    }
-
-                    // Process values of each file
-                    discharge.files.forEach(file => {
-                        try {
-                            const lines = file.content.trim().split('\n');
-                            const values = [];
-                            let fileTimes = [];
-
-                            for (const line of lines) {
-                                const parts = line.trim().split(/\s+/);
-                                if (parts.length >= 2) {
-                                    const time = parseFloat(parts[0]);
-                                    const value = parseFloat(parts[1]);
-
-                                    if (!isNaN(time) && !isNaN(value)) {
-                                        // If we don't have common times, store the times per file
-                                        if (!allSameTime) {
-                                            fileTimes.push(time);
-                                        }
-                                        values.push(value);
-                                    }
-                                }
-                            }
-
-                            const sensorData = {
-                                fileName: file.name,
-                                values: values
-                            };
-
-                            // If there are no common times, include the specific times of the file
-                            if (!allSameTime) {
-                                sensorData.times = fileTimes;
-                                sensorData.length = fileTimes.length;
-                            }
-
-                            dischargeData.signals.push(sensorData);
-
-                        } catch (error) {
-                            throw new Error(`Error al procesar el archivo ${file.name}: ${error.message}`);
-                        }
-                    });
-
-                    trainingData.discharges.push(dischargeData);
-                });
-
-                // Verificar si se procesó algún descarga
-                if (trainingData.discharges.length === 0) {
-                    throw new Error('No hay archivos válidos para entrenar');
-                }
-
-                return trainingData;
-
-            } catch (error) {
-                throw error;
-            }
-        }
-
         function renderModelConfig(models) {
             const configContainer = document.getElementById('modelConfigContainer');
             let html = '';
@@ -2218,12 +1933,34 @@
             }
         };
 
+        window.downloadPrediction = function (index, event) {
+            if (event) event.stopPropagation();
+            const prediction = predictionHistory[index];
+            if (!prediction) return;
+
+            const blob = new Blob([JSON.stringify(prediction, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const ts = prediction.timestamp ? new Date(prediction.timestamp).toISOString().replace(/[:.]/g, '-') : index;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `prediction_${ts}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
         // File preview with graph visualization
-        function showFilePreview(fileName, content, anomalyTime = null) {
-            // Store reference to any existing chart to destroy it
-            let chartInstance = window.signalChartInstance;
-            if (chartInstance) {
-                chartInstance.destroy();
+        function showFilePreview(fileName, fileOrContent, anomalyTime = null) {
+            const loadContent = typeof fileOrContent === 'string'
+                ? Promise.resolve(fileOrContent)
+                : readFileAsText(fileOrContent);
+
+            loadContent.then(content => {
+                // Store reference to any existing chart to destroy it
+                let chartInstance = window.signalChartInstance;
+                if (chartInstance) {
+                    chartInstance.destroy();
             }
 
             document.getElementById('filePreviewTitle').textContent = fileName;
@@ -2294,6 +2031,7 @@
 
             // Show the modal
             filePreviewModal.show();
+        });
         }
 
         function parseDisruptionTimesFile(content) {
@@ -2516,6 +2254,16 @@
                     });
                 });
 
+            async function fetchWithTimeout(resource, options = {}, timeout = 10000) {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), timeout);
+                try {
+                    return await fetch(resource, { ...options, signal: controller.signal });
+                } finally {
+                    clearTimeout(id);
+                }
+            }
+
             document.getElementById('addModelBtn').addEventListener('click', async function () {
                 const name = prompt('Model name:');
                 if (!name) return;
@@ -2563,28 +2311,6 @@
                 }
             });
 
-            // Event listener to download JSON
-            document.getElementById('downloadJsonBtn').addEventListener('click', function () {
-                try {
-                    const trainingData = processDischargesForTraining();
-
-                    // Create file to download
-                    const dataStr = JSON.stringify(trainingData, null, 2);
-                    const blob = new Blob([dataStr], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-
-                    // Create download link and execute it
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = url;
-                    downloadLink.download = 'training_data.json';
-                    document.body.appendChild(downloadLink);
-                    downloadLink.click();
-                    document.body.removeChild(downloadLink);
-                    URL.revokeObjectURL(url);
-                } catch (error) {
-                    alert('Error generating JSON: ' + error.message);
-                }
-            });
 
             document.getElementById('sensorFilesInput').addEventListener('change', async function (e) {
                 if (e.target.files.length === 0) return;
@@ -2648,55 +2374,81 @@
             });
 
             // Event listener for processing discharges for training
-            document.getElementById('processDischargesBtn').addEventListener('click', function () {
+            document.getElementById('processDischargesBtn').addEventListener('click', async function () {
+                const btn = document.getElementById('processDischargesBtn');
+                const original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+
                 try {
-                    const trainingData = processDischargesForTraining();
+                    const total = discharges.length;
+                    let firstResult = null;
 
-                    fetch('/api/train', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(trainingData)
-                    })
-                        .then(response => response.json())
-                        .then(result => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
+                    for (let start = 0; start < discharges.length; start += 10) {
+                        const batch = discharges.slice(start, start + 10);
 
-                            if (result.error) {
-                                document.getElementById('trainingResult').className = 'alert alert-danger';
-                                document.getElementById('trainingResult').innerHTML = `Error: ${result.error}`;
-                            } else {
-                                document.getElementById('trainingResult').className = 'alert alert-success';
-                                document.getElementById('trainingResult').innerHTML = `
+                        let response;
+                        while (true) {
+                            const metadata = {
+                                totalDischarges: total,
+                                discharges: batch.map(d => ({ id: d.id, anomalyTime: d.anomalyTime }))
+                            };
+
+                            const formData = new FormData();
+                            formData.append('metadata', JSON.stringify(metadata));
+
+                            batch.forEach((discharge, idx) => {
+                                discharge.files.forEach(f => {
+                                    formData.append(`discharge${idx}`, f.file, f.name);
+                                });
+                            });
+
+                            try {
+                                console.log('Sending training request with metadata:', metadata);
+                                response = await fetchWithTimeout('/api/train/raw', {
+                                    method: 'POST',
+                                    body: formData
+                                }, 10000);
+                                if (!response.ok) {
+                                    console.error('HTTP error:', response.status, response.statusText);
+                                } else {
+                                    console.log('Training request successful');
+                                }
+                                break;
+                            } catch (err) {
+                                console.error('Fetch error:', err);
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        }
+
+                        const result = await response.json();
+                        if (!firstResult) {
+                            firstResult = result;
+                        }
+                    }
+
+                    document.getElementById('trainingResultContainer').style.display = 'block';
+
+                    if (firstResult && firstResult.error) {
+                        document.getElementById('trainingResult').className = 'alert alert-danger';
+                        document.getElementById('trainingResult').innerHTML = `Error: ${firstResult.error}`;
+                    } else if (firstResult) {
+                        document.getElementById('trainingResult').className = 'alert alert-success';
+                        document.getElementById('trainingResult').innerHTML = `
                                 <h5>Entrenamiento iniciado</h5>
-                                <p>${result.message}</p>
-                                <p>Modelos exitosos: ${result.details.successful}</p>
-                                <p>Modelos fallidos: ${result.details.failed}</p>
+                                <p>${firstResult.message}</p>
+                        ${firstResult.details ? `<p>Modelos exitosos: ${firstResult.details.successful}</p>
+                                <p>Modelos fallidos: ${firstResult.details.failed}</p>` : ''}
                                 <p>Consulte los logs para más detalles.</p>
                             `;
-                            }
-                        })
-                        .catch(error => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
-                            document.getElementById('trainingResult').className = 'alert alert-danger';
-                            document.getElementById('trainingResult').innerHTML = `Error sending training data: ${error.message}`;
-                        });
-
-                    document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `
-                        <div class="text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Sending training data...</p>
-                        </div>
-                    `;
-                    document.getElementById('trainingResult').className = 'alert';
+                    }
                 } catch (error) {
                     document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
                     document.getElementById('trainingResult').className = 'alert alert-danger';
+                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = original;
                 }
             });
 
@@ -2711,16 +2463,6 @@
                 }
             });
 
-            document.getElementById('trainingFile').addEventListener('change', async function (e) {
-                if (e.target.files.length === 0) return;
-
-                try {
-                    const content = await readFileAsText(e.target.files[0]);
-                    document.getElementById('trainingDataTextarea').value = content;
-                } catch (error) {
-                    alert('Error reading file: ' + error.message);
-                }
-            });
 
             document.getElementById('testPredictionBtn').addEventListener('click', function () {
                 const testDataElem = document.getElementById('testDataTextarea');
@@ -2744,62 +2486,8 @@
                     document.getElementById('predictionResult').className = 'alert alert-danger';
                 }
             });
-
-            document.getElementById('startTrainingBtn').addEventListener('click', function () {
-                const trainingDataElem = document.getElementById('trainingDataTextarea');
-                try {
-                    const trainingData = JSON.parse(trainingDataElem.value);
-
-                    if (!trainingData.discharges || !Array.isArray(trainingData.discharges)) {
-                        throw new Error('The data must have a "discharges" array');
-                    }
-
-                    fetch('/api/train', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(trainingData)
-                    })
-                        .then(response => {
-                            if (!response.ok) {
-                                return response.json().then(err => { throw new Error(err.error || 'Error in the request'); });
-                            }
-                            return response.json();
-                        })
-                        .then(result => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
-                            document.getElementById('trainingResult').className = 'alert alert-success';
-                            document.getElementById('trainingResult').innerHTML = `
-                            <h5>Training started</h5>
-                            <p>${result.message}</p>
-                            <p>Successful models: ${result.details.successful}</p>
-                            <p>Failed models: ${result.details.failed}</p>
-                            <p>Check the logs for more details.</p>
-                        `;
-                        })
-                        .catch(error => {
-                            document.getElementById('trainingResultContainer').style.display = 'block';
-                            document.getElementById('trainingResult').className = 'alert alert-danger';
-                            document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
-                        });
-
-                    document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `
-                        <div class="text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Sending training data...</p>
-                        </div>
-                    `;
-                    document.getElementById('trainingResult').className = 'alert';
-                } catch (error) {
-                    document.getElementById('trainingResultContainer').style.display = 'block';
-                    document.getElementById('trainingResult').innerHTML = `Error: ${error.message}`;
-                    document.getElementById('trainingResult').className = 'alert alert-danger';
-                }
-            });            document.getElementById('configModal').addEventListener('show.bs.modal', function () {
+           
+            document.getElementById('configModal').addEventListener('show.bs.modal', function () {
                 fetch('/api/config')
                     .then(response => response.json())
                     .then(config => {

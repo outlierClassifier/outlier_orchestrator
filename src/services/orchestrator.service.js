@@ -11,6 +11,10 @@ class OrchestratorService {
     this.models = config.models;
     this.timeout = config.timeouts.model;
     this.trainingTimeout = config.timeouts.training;
+    // In-memory storage for training results
+    this.trainingSummaries = [];
+    // Estado de entrenamiento actual para manejo por lotes
+    this.trainingSession = null;
   }
 
   /**
@@ -19,34 +23,40 @@ class OrchestratorService {
    * @param {Object} data - Datos para la predicción (formato discharges)
    * @returns {Promise} - Promesa con la respuesta del modelo
    */
-  async callModel(modelName, data) {
+  async callModel(modelName, discharge) {
     try {
       const modelConfig = this.models[modelName];
-      
+
       if (!modelConfig || !modelConfig.enabled) {
         logger.warn(`Model ${modelName} is not enabled or does not exist`);
         return { error: `Model ${modelName} is not available`, modelName };
       }
-      
+
       logger.info(`Sending data to ${modelName} model at ${modelConfig.url}`);
-      
+
       const response = await axios({
         method: 'post',
         url: modelConfig.url,
-        data,
+        data: discharge,
         timeout: this.timeout
       });
-      
+
       logger.info(`Received response from ${modelName} model`);
-      return { 
-        result: response.data,
+
+      let prediction = response.data.prediction;
+      if (typeof prediction === 'string') {
+        prediction = prediction.toLowerCase() === 'anomaly' ? 1 : 0;
+      }
+
+      return {
+        result: { ...response.data, prediction },
         modelName,
         status: 'success'
       };
     } catch (error) {
       logger.error(`Error calling ${modelName} model: ${error.message}`);
-      return { 
-        error: error.message, 
+      return {
+        error: error.message,
         modelName,
         status: 'error'
       };
@@ -59,37 +69,273 @@ class OrchestratorService {
    * @param {Object} data - Datos para entrenamiento (formato discharges)
    * @returns {Promise} - Promesa con la respuesta del modelo
    */
-  async trainModel(modelName, data) {
+  async trainModel(modelName, dischargeStream, totalDischarges) {
     try {
       const modelConfig = this.models[modelName];
-      
+
       if (!modelConfig || !modelConfig.enabled) {
         logger.warn(`Model ${modelName} is not enabled or does not exist for training`);
         return { error: `Model ${modelName} is not available`, modelName };
       }
-      
-      logger.info(`Sending training data to ${modelName} model at ${modelConfig.trainingUrl}`);
-      
-      const response = await axios({
+
+      const timeoutSeconds = Math.ceil(this.trainingTimeout / 1000);
+
+      logger.info(`Starting training session on ${modelName} at ${modelConfig.trainingUrl}`);
+
+      const startResponse = await axios({
         method: 'post',
         url: modelConfig.trainingUrl,
-        data,
+        data: { totalDischarges, timeoutSeconds },
         timeout: this.trainingTimeout
       });
-      
-      logger.info(`Received training response from ${modelName} model`);
-      return { 
-        result: response.data,
+
+      logger.info(`Model ${modelName} accepted training session expecting ${startResponse.data.expectedDischarges} discharges`);
+
+      let index = 0;
+      for await (const discharge of dischargeStream) {
+        await axios({
+          method: 'post',
+          url: `${modelConfig.trainingUrl}/${index + 1}`,
+          data: discharge,
+          timeout: this.trainingTimeout
+        });
+
+        // release arrays to free memory
+        if (discharge.signals) {
+          for (const s of discharge.signals) {
+            s.values = null;
+          }
+          discharge.signals = null;
+        }
+        discharge.times = null;
+
+        index += 1;
+      }
+
+      return {
+        result: startResponse.data,
         modelName,
         status: 'success'
       };
     } catch (error) {
       logger.error(`Error training ${modelName} model: ${error.message}`);
-      return { 
-        error: error.message, 
+      return {
+        error: error.message,
         modelName,
         status: 'error'
       };
+    }
+  }
+
+  /**
+   * Inicia una sesión de entrenamiento con todos los modelos habilitados
+   * y almacena el estado para el envío por lotes.
+   * @param {number} totalDischarges - Total de descargas a enviar en toda la sesión
+   * @returns {Object} Resumen de los modelos que aceptaron el entrenamiento
+   */
+  async startTrainingSession(totalDischarges, autoFinish = true) {
+    const health = await this.healthCheck();
+    const online = health.models.filter(m => m.status === 'online');
+    const offline = health.models.filter(m => m.status !== 'online');
+
+    if (online.length === 0) {
+      logger.error('No models are online for training');
+      throw new Error('No models are online for training');
+    }
+
+    const timeoutSeconds = Math.ceil(this.trainingTimeout / 1000);
+    const sessionModels = {};
+    const details = [];
+    let successful = 0;
+
+    offline.forEach(m => {
+      if (this.models[m.model].enabled) {
+        details.push({ modelName: m.model, status: m.status, error: m.error });
+      }
+    });
+
+    for (const { model: modelName } of online) {
+      const modelConfig = this.models[modelName];
+      try {
+        await axios({
+          method: 'post',
+          url: modelConfig.trainingUrl,
+          data: { totalDischarges, timeoutSeconds },
+          timeout: this.trainingTimeout
+        });
+        sessionModels[modelName] = { trainingUrl: modelConfig.trainingUrl, queue: [], nextSeq: 1, sending: false, pending: false };
+        details.push({ modelName, status: 'success' });
+        successful += 1;
+      } catch (error) {
+        logger.error(`Error starting training for ${modelName}: ${error.message}`);
+        details.push({ modelName, status: 'error', error: error.message });
+      }
+    }
+
+    this.trainingSession = {
+      totalDischarges,
+      enqueued: 0,
+      finished: false,
+      autoFinish,
+      models: sessionModels,
+      processed: new Set()
+    };
+
+    return {
+      successful,
+      failed: details.length - successful,
+      details
+    };
+  }
+
+  /**
+   * Envía un lote de descargas a los modelos dentro de la sesión activa
+   * @param {Array<Object>} rawDischarges - Descargas del lote
+   */
+  async sendTrainingBatch(rawDischarges = []) {
+    if (!this.trainingSession) {
+      throw new Error('No training session started');
+    }
+
+    const stream = this.prepareTrainingStream(rawDischarges);
+
+    for await (const discharge of stream) {
+      if (this.trainingSession.processed.has(discharge.id)) {
+        console.warn(`Discharge ${discharge.id} already processed, skipping`);
+        if (discharge.signals) {
+          for (const s of discharge.signals) {
+            s.values = null;
+          }
+          discharge.signals = null;
+        }
+        discharge.times = null;
+        continue;
+      }
+
+      this.trainingSession.processed.add(discharge.id);
+
+      for (const modelName of Object.keys(this.trainingSession.models)) {
+        const model = this.trainingSession.models[modelName];
+        model.queue.push(this.cloneDischarge(discharge));
+        console.log(`Enqueued discharge ${discharge.id} for model ${modelName}`);
+        this.processQueue(modelName);
+      }
+
+      if (discharge.signals) {
+        for (const s of discharge.signals) {
+          s.values = null;
+        }
+        discharge.signals = null;
+      }
+      discharge.times = null;
+
+      this.trainingSession.enqueued += 1;
+    }
+  }
+
+  /**
+   * Finaliza la sesión de entrenamiento actual
+   */
+  finishTraining() {
+    if (this.trainingSession) {
+      console.log('Finishing training session');
+      this.trainingSession.finished = true;
+      if (this.allQueuesEmpty()) {
+        this.trainingSession = null;
+      }
+    }
+  }
+
+  allQueuesEmpty() {
+    return Object.values(this.trainingSession.models)
+      .every(m => m.queue.length === 0 && !m.sending);
+  }
+
+  async awaitQueuesEmpty(timeoutMs = this.trainingTimeout) {
+    if (!this.trainingSession) return true;
+
+    const end = Date.now() + timeoutMs;
+    while (!this.allQueuesEmpty()) {
+      if (Date.now() >= end) {
+        logger.warn('Timeout waiting for training queues to empty');
+        return false;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return true;
+  }
+
+  cloneDischarge(d) {
+    const clone = { id: d.id, length: d.length };
+    if (d.anomalyTime !== undefined) {
+      clone.anomalyTime = d.anomalyTime;
+    }
+    if (d.signals) {
+      clone.signals = d.signals.map(s => ({ ...s, values: [...s.values] }));
+    }
+    if (d.times) {
+      clone.times = [...d.times];
+    }
+    return clone;
+  }
+
+  async processQueue(modelName) {
+    const model = this.trainingSession.models[modelName];
+    console.log(`Processing queue for model: ${modelName}`);
+    if (model.sending) {
+      model.pending = true;
+      return;
+    }
+    console.log(`Starting to process queue for model: ${modelName}`);
+    model.sending = true;
+
+    try {
+      while (model.queue.length > 0) {
+        const discharge = model.queue[0];
+        let sent = false;
+        while (!sent) {
+          try {
+            await axios({
+              method: 'post',
+              url: `${model.trainingUrl}/${model.nextSeq}`,
+              data: discharge,
+              timeout: this.trainingTimeout
+            });
+            sent = true;
+          } catch (error) {
+            if (!error.response) {
+              console.warn(`Network error while training ${modelName}: ${error.message}`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              console.error(`Error training ${modelName}: ${error.message}`);
+              logger.error(`Error training ${modelName}: ${error.message}`);
+              sent = true;
+            }
+          }
+        }
+
+        if (discharge.signals) {
+          for (const s of discharge.signals) {
+            s.values = null;
+          }
+          discharge.signals = null;
+        }
+        discharge.times = null;
+
+        model.queue.shift();
+        model.nextSeq += 1;
+      }
+    } finally {
+      model.sending = false;
+      console.log(`Finished processing queue for model: ${modelName}`);
+      if (model.queue.length > 0 || model.pending) {
+        model.pending = false;
+        console.log(`Queue for ${modelName} not empty after processing; scheduling next run`);
+        logger.debug(`Queue for ${modelName} not empty after processing; scheduling next run`);
+        setImmediate(() => this.processQueue(modelName));
+      } else if (this.trainingSession.finished && this.allQueuesEmpty()) {
+        this.trainingSession = null;
+      }
     }
   }
 
@@ -119,9 +365,11 @@ class OrchestratorService {
       throw new Error('No models are enabled for prediction');
     }
     
-    // Llamadas en paralelo a todos los modelos
-    const modelPromises = enabledModels.map(model => 
-      this.callModel(model, data)
+    const discharge = data.discharges[0];
+
+    // Llamadas en paralelo a todos los modelos con la nueva estructura
+    const modelPromises = enabledModels.map(model =>
+      this.callModel(model, discharge)
     );
     
     // Esperar todas las respuestas (con timeout)
@@ -143,41 +391,23 @@ class OrchestratorService {
    */
   async trainModels(data) {
     logger.info('Starting training process for all models');
-    
+
     // Validar formato de datos
     if (!data.discharges || !Array.isArray(data.discharges)) {
       logger.error('Formato de datos inválido: se espera un objeto con array "discharges"');
       throw new Error('Formato de datos inválido: se espera un objeto con array "discharges"');
     }
-    
+
     logger.info(`Procesando entrenamiento con ${data.discharges.length} descargas`);
-    
-    const enabledModels = Object.keys(this.models)
-      .filter(model => this.models[model].enabled);
-    
-    logger.info(`Enabled models for training: ${enabledModels.join(', ')}`);
-    
-    if (enabledModels.length === 0) {
-      logger.error('No models are enabled');
-      throw new Error('No models are enabled for training');
-    }
-    
-    // Llamadas en paralelo a todos los modelos para entrenamiento
-    const trainingPromises = enabledModels.map(model => 
-      this.trainModel(model, data)
-    );
-    
-    // Esperar todas las respuestas
-    const responses = await Promise.all(trainingPromises);
-    
-    const summary = {
-      successful: responses.filter(r => r.status === 'success').length,
-      failed: responses.filter(r => r.status === 'error').length,
-      details: responses
-    };
-    
+
+    const totalDischarges = data.discharges.length;
+    const summary = await this.startTrainingSession(totalDischarges);
+    await this.sendTrainingBatch(data.discharges);
+    await this.awaitQueuesEmpty();
+    this.finishTraining();
+
     logger.info(`Training completed: ${summary.successful} successful, ${summary.failed} failed`);
-    
+
     return summary;
   }
 
@@ -316,6 +546,41 @@ class OrchestratorService {
   }
 
   /**
+   * Procesa la respuesta de entrenamiento enviada por un nodo
+   * y almacena un resumen en memoria para consultas posteriores.
+   * @param {Object} data - Objeto con la estructura TrainingResponse
+   * @returns {Object} - Resultado almacenado con timestamp
+   */
+  handleTrainingCompleted(data = {}) {
+    if (!data || typeof data !== 'object' || !data.status) {
+      throw new Error('Invalid TrainingResponse');
+    }
+
+    const entry = {
+      timestamp: new Date(),
+      ...data
+    };
+
+    this.trainingSummaries.push(entry);
+
+    // keep last 100 summaries to avoid uncontrolled growth
+    if (this.trainingSummaries.length > 100) {
+      this.trainingSummaries.shift();
+    }
+
+    logger.info(`Stored training summary with status ${data.status}`);
+    return entry;
+  }
+
+  /**
+   * Devuelve los resúmenes de entrenamiento almacenados
+   * @returns {Array<Object>}
+   */
+  getTrainingSummaries() {
+    return this.trainingSummaries;
+  }
+
+  /**
    * Parsea un conjunto de archivos de texto de señales
    * @param {Array<Object>} files - Array de objetos con {name, content}
    * @param {Object} anomalyTimes - Objeto con los tiempos de anomalía por nombre de archivo
@@ -323,19 +588,81 @@ class OrchestratorService {
    */
   parseSensorFiles(files, anomalyTimes = {}) {
     const signals = [];
-    
-    for (const file of files) {
+    let times = null;
+
+    files.forEach((file, index) => {
       try {
-        const anomalyTime = anomalyTimes[file.name] || null;
-        const sensorData = SensorData.fromTextFile(file.name, file.content, anomalyTime);
-        signals.push(sensorData);
+        const name = file.name || file.originalname;
+        const content = file.content || (file.buffer ? file.buffer.toString('utf8') : '');
+        const anomalyTime = anomalyTimes[name] || null;
+        const sensorData = SensorData.fromTextFile(name, content, anomalyTime);
+
+        if (index === 0) {
+          times = sensorData.times;
+        } else if (sensorData.times.length !== times.length) {
+          logger.warn(`Signal ${name} length differs from first signal`);
+        } else {
+          for (let i = 0; i < times.length; i++) {
+            if (sensorData.times[i] !== times[i]) {
+              logger.warn(`Signal ${name} time mismatch at index ${i}`);
+              break;
+            }
+          }
+        }
+
+        signals.push(sensorData.toJSON());
       } catch (error) {
-        logger.error(`Error parsing sensor file ${file.name}: ${error.message}`);
-        throw new Error(`Error parsing sensor file ${file.name}: ${error.message}`);
+        const fname = file.name || file.originalname;
+        logger.error(`Error parsing sensor file ${fname}: ${error.message}`);
+        throw new Error(`Error parsing sensor file ${fname}: ${error.message}`);
       }
+    });
+
+    const length = Array.isArray(times) ? times.length : 0;
+
+    return { signals, times, length };
+  }
+
+  /**
+   * Genera de forma perezosa las descargas procesadas en formato
+   * requerido por el protocolo outlier.
+   *
+   * @param {Array<Object>} rawDischarges - Descargas con archivos o ya procesadas
+   * @returns {AsyncGenerator<Object>} - Generador que produce una descarga por vez
+   */
+  async *prepareTrainingStream(rawDischarges = []) {
+    for (let idx = 0; idx < rawDischarges.length; idx++) {
+      const d = rawDischarges[idx];
+
+      let discharge;
+      if (d.files) {
+        if (!d.files.length) {
+          throw new Error(`Discharge ${d.id || idx} has no files`);
+        }
+        const { signals, times, length } = this.parseSensorFiles(d.files);
+        discharge = {
+          id: String(d.id || `discharge_${idx + 1}`),
+          signals,
+          times,
+          length
+        };
+      } else if (d.signals && d.times) {
+        discharge = {
+          id: String(d.id || `discharge_${idx + 1}`),
+          signals: d.signals,
+          times: d.times,
+          length: d.length || d.times.length
+        };
+      } else {
+        throw new Error(`Discharge ${d.id || idx} has no files or signals`);
+      }
+
+      if (d.anomalyTime !== undefined) {
+        discharge.anomalyTime = d.anomalyTime;
+      }
+
+      yield discharge;
     }
-    
-    return { signals };
   }
 }
 

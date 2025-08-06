@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anomaly Detection Flow Studio</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11/dist/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="/node_modules/chart.js/dist/chart.umd.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Connect to the Socket.io server
+        const socket = io();
+        window.socket = socket;  // Make the socket available globally
+        socket.on('connect', () => {
+            console.log('Connected to Socket.io server');
+        });
+    </script>
+    <style>
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1a2e;
+            --bg-tertiary: #16213e;
+            --accent-primary: #00d4ff;
+            --accent-secondary: #7c3aed;
+            --accent-tertiary: #f59e0b;
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #374151;
+            --glow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-areas: 
+                "sidebar header"
+                "sidebar content";
+            grid-template-columns: 280px 1fr;
+            grid-template-rows: 80px 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            grid-area: sidebar;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+        }
+
+        .logo {
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+        }
+
+        .logo-text {
+            font-weight: 700;
+            font-size: 18px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-menu {
+            flex: 1;
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            margin: 8px 16px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            width: calc(100% - 32px);
+        }
+
+        .nav-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent-primary);
+            transform: translateX(4px);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(124, 58, 237, 0.2));
+            color: var(--accent-primary);
+            box-shadow: var(--glow);
+        }
+
+        .nav-icon {
+            width: 20px;
+            text-align: center;
+        }
+
+        .header {
+            grid-area: header;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            color: var(--accent-primary);
+            box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .content {
+            grid-area: content;
+            padding: 32px;
+            overflow: auto;
+        }
+
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .model-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .model-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+        }
+
+        .model-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .model-header {
+            display: flex;
+            justify-content: between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .model-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .model-type {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .model-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-online {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .status-offline {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .model-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .metric {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .flow-workspace {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            height: 600px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .workspace-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: between;
+            background: var(--bg-tertiary);
+        }
+
+        .workspace-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .workspace-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .workspace-controls {
+            display: flex;
+            gap: 12px;
+        }
+
+        .control-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-btn:hover {
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+        }
+
+        .flow-canvas {
+            height: calc(100% - 80px);
+            background: radial-gradient(circle at 50% 50%, rgba(0, 212, 255, 0.05) 0%, transparent 50%);
+        }
+
+        .floating-panel {
+            position: absolute;
+            top: 100px;
+            right: 20px;
+            width: 320px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: between;
+        }
+
+        .panel-content {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .model-palette-item {
+            padding: 12px;
+            margin: 8px 0;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: grab;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .model-palette-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border-color: var(--accent-primary);
+        }
+
+        .model-palette-item:active {
+            cursor: grabbing;
+            transform: scale(0.95);
+        }
+
+        .palette-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+
+        .tab-navigation {
+            display: none;
+        }
+
+        /* React Flow Dark Theme */
+        .react-flow__background {
+            background: var(--bg-primary) !important;
+        }
+
+        .react-flow__edge {
+            stroke: var(--accent-primary) !important;
+            stroke-width: 2px !important;
+        }
+
+        .react-flow__handle {
+            background: var(--accent-primary) !important;
+            border: 2px solid var(--bg-secondary) !important;
+        }
+
+        .react-flow__controls {
+            background: var(--bg-secondary) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 12px !important;
+        }
+
+        .react-flow__controls-button {
+            background: transparent !important;
+            border: none !important;
+            color: var(--text-secondary) !important;
+        }
+
+        .react-flow__controls-button:hover {
+            background: var(--bg-tertiary) !important;
+            color: var(--accent-primary) !important;
+        }
+
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-areas: 
+                    "header"
+                    "content";
+                grid-template-columns: 1fr;
+                grid-template-rows: 80px 1fr;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .floating-panel {
+                position: relative;
+                top: 0;
+                right: 0;
+                width: 100%;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <div class="logo-text">Flow Studio</div>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="prediction">
+                    <i class="nav-icon fas fa-chart-line"></i>
+                    <span>Prediction Flow</span>
+                </button>
+                <button class="nav-item" data-tab="training">
+                    <i class="nav-icon fas fa-graduation-cap"></i>
+                    <span>Training Flow</span>
+                </button>
+                <button class="nav-item" data-tab="models">
+                    <i class="nav-icon fas fa-cubes"></i>
+                    <span>Model Hub</span>
+                </button>
+                <button class="nav-item" data-tab="analytics">
+                    <i class="nav-icon fas fa-analytics"></i>
+                    <span>Analytics</span>
+                </button>
+                <button class="nav-item" data-tab="settings">
+                    <i class="nav-icon fas fa-cog"></i>
+                    <span>Settings</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Header -->
+        <header class="header">
+            <div class="header-title" id="current-tab-title">Prediction Flow Designer</div>
+            <div class="header-controls">
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span>System Online</span>
+                </div>
+                <button class="theme-toggle" id="theme-toggle">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="content">
+            <!-- Prediction Flow Tab -->
+            <div class="tab-content active" id="prediction-tab">
+                <div class="flow-workspace">
+                    <div class="workspace-header">
+                        <div class="workspace-title">
+                            <div class="workspace-icon">
+                                <i class="fas fa-project-diagram"></i>
+                            </div>
+                            <span>Prediction Workflow</span>
+                        </div>
+                        <div class="workspace-controls">
+                            <button class="control-btn" id="clear-canvas">
+                                <i class="fas fa-trash"></i>
+                                Clear
+                            </button>
+                            <button class="control-btn" id="save-workflow">
+                                <i class="fas fa-save"></i>
+                                Save
+                            </button>
+                            <button class="control-btn" id="execute-workflow">
+                                <i class="fas fa-play"></i>
+                                Execute
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flow-canvas" id="prediction-flow-container"></div>
+                </div>
+                
+                <!-- Model Palette -->
+                <div class="floating-panel" id="model-palette">
+                    <div class="panel-header">
+                        <span>Model Palette</span>
+                        <button class="control-btn" id="refresh-models">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                    </div>
+                    <div class="panel-content" id="model-palette-content">
+                        <!-- Models will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Flow Tab -->
+            <div class="tab-content" id="training-tab">
+                <div class="flow-workspace">
+                    <div class="workspace-header">
+                        <div class="workspace-title">
+                            <div class="workspace-icon">
+                                <i class="fas fa-dumbbell"></i>
+                            </div>
+                            <span>Training Pipeline</span>
+                        </div>
+                        <div class="workspace-controls">
+                            <button class="control-btn" id="clear-training-canvas">
+                                <i class="fas fa-trash"></i>
+                                Clear
+                            </button>
+                            <button class="control-btn" id="start-training">
+                                <i class="fas fa-play"></i>
+                                Start Training
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flow-canvas" id="training-flow-container"></div>
+                </div>
+            </div>
+
+            <!-- Model Hub Tab -->
+            <div class="tab-content" id="models-tab">
+                <div class="models-grid" id="models-grid">
+                    <!-- Models will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Analytics Tab -->
+            <div class="tab-content" id="analytics-tab">
+                <div class="flow-workspace">
+                    <div class="workspace-header">
+                        <div class="workspace-title">
+                            <div class="workspace-icon">
+                                <i class="fas fa-chart-bar"></i>
+                            </div>
+                            <span>Performance Analytics</span>
+                        </div>
+                    </div>
+                    <div class="flow-canvas" id="analytics-container">
+                        <!-- Analytics charts will go here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-content" id="settings-tab">
+                <div class="flow-workspace">
+                    <div class="workspace-header">
+                        <div class="workspace-title">
+                            <div class="workspace-icon">
+                                <i class="fas fa-sliders-h"></i>
+                            </div>
+                            <span>System Configuration</span>
+                        </div>
+                    </div>
+                    <div class="flow-canvas" id="settings-container">
+                        <!-- Settings will go here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- React and ReactFlow Scripts -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/reactflow@11/dist/umd/index.js"></script>
+    
+    <!-- Our Custom Components -->
+    <script src="/js/flow-components.js"></script>
+    
+    <script>
+        // Global state
+        let currentTab = 'prediction';
+        let models = [];
+        let flowInstances = {};
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeNavigation();
+            loadModels();
+            initializeFlowCanvases();
+            setupEventListeners();
+        });
+
+        // Navigation system
+        function initializeNavigation() {
+            const navItems = document.querySelectorAll('.nav-item');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const headerTitle = document.getElementById('current-tab-title');
+
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const tab = item.getAttribute('data-tab');
+                    switchTab(tab);
+                });
+            });
+
+            function switchTab(tab) {
+                // Update navigation
+                navItems.forEach(item => item.classList.remove('active'));
+                document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+                // Update content
+                tabContents.forEach(content => content.classList.remove('active'));
+                document.getElementById(`${tab}-tab`).classList.add('active');
+
+                // Update header
+                const titles = {
+                    prediction: 'Prediction Flow Designer',
+                    training: 'Training Flow Designer', 
+                    models: 'Model Hub',
+                    analytics: 'Performance Analytics',
+                    settings: 'System Configuration'
+                };
+                headerTitle.textContent = titles[tab] || 'Flow Studio';
+
+                currentTab = tab;
+
+                // Initialize specific tab content
+                if (tab === 'models') {
+                    renderModelsGrid();
+                } else if (tab === 'analytics') {
+                    renderAnalytics();
+                } else if (tab === 'settings') {
+                    renderSettings();
+                }
+            }
+        }
+
+        // Load models from API
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                models = config.models || [];
+                renderModelPalette();
+                if (currentTab === 'models') {
+                    renderModelsGrid();
+                }
+            } catch (error) {
+                console.error('Error loading models:', error);
+                models = [];
+            }
+        }
+
+        // Render model palette
+        function renderModelPalette() {
+            const paletteContent = document.getElementById('model-palette-content');
+            if (!paletteContent) return;
+
+            paletteContent.innerHTML = models.map(model => `
+                <div class="model-palette-item" draggable="true" data-model='${JSON.stringify(model)}'>
+                    <div class="palette-icon">
+                        <i class="fas fa-cube"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; font-size: 14px;">${model.displayName || model.name}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">${model.type || 'ML Model'}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Add drag event listeners
+            paletteContent.querySelectorAll('.model-palette-item').forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    const modelData = JSON.parse(item.getAttribute('data-model'));
+                    e.dataTransfer.setData('application/reactflow', JSON.stringify(modelData));
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+            });
+        }
+
+        // Render models grid
+        function renderModelsGrid() {
+            const modelsGrid = document.getElementById('models-grid');
+            if (!modelsGrid) return;
+
+            modelsGrid.innerHTML = models.map(model => `
+                <div class="model-card">
+                    <div class="model-header">
+                        <div>
+                            <div class="model-name">${model.displayName || model.name}</div>
+                            <div class="model-type">${model.type || 'ML Model'}</div>
+                        </div>
+                        <div class="model-status">
+                            <div class="status-badge ${model.enabled ? 'status-online' : 'status-offline'}">
+                                ${model.enabled ? 'Online' : 'Offline'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="model-metrics">
+                        <div class="metric">
+                            <div class="metric-value">${Math.floor(Math.random() * 100)}%</div>
+                            <div class="metric-label">Accuracy</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">${Math.floor(Math.random() * 1000)}ms</div>
+                            <div class="metric-label">Latency</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Initialize React Flow canvases
+        function initializeFlowCanvases() {
+            // Prediction flow
+            const predictionContainer = document.getElementById('prediction-flow-container');
+            if (predictionContainer && window.FlowCanvas) {
+                ReactDOM.render(
+                    React.createElement(window.FlowCanvas, { 
+                        mode: 'prediction',
+                        models: models,
+                        onInstanceReady: (instance) => {
+                            flowInstances.prediction = instance;
+                        }
+                    }),
+                    predictionContainer
+                );
+            }
+            
+            // Training flow  
+            const trainingContainer = document.getElementById('training-flow-container');
+            if (trainingContainer && window.FlowCanvas) {
+                ReactDOM.render(
+                    React.createElement(window.FlowCanvas, { 
+                        mode: 'training',
+                        models: models,
+                        onInstanceReady: (instance) => {
+                            flowInstances.training = instance;
+                        }
+                    }),
+                    trainingContainer
+                );
+            }
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Theme toggle
+            const themeToggle = document.getElementById('theme-toggle');
+            themeToggle?.addEventListener('click', toggleTheme);
+
+            // Refresh models
+            const refreshModels = document.getElementById('refresh-models');
+            refreshModels?.addEventListener('click', loadModels);
+
+            // Clear canvas
+            const clearCanvas = document.getElementById('clear-canvas');
+            clearCanvas?.addEventListener('click', () => {
+                if (flowInstances.prediction) {
+                    flowInstances.prediction.setNodes([]);
+                    flowInstances.prediction.setEdges([]);
+                }
+            });
+
+            // Execute workflow
+            const executeWorkflow = document.getElementById('execute-workflow');
+            executeWorkflow?.addEventListener('click', executeCurrentWorkflow);
+        }
+
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            
+            const themeIcon = document.querySelector('#theme-toggle i');
+            themeIcon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+
+        // Execute workflow
+        async function executeCurrentWorkflow() {
+            // Implementation for workflow execution
+            console.log('Executing workflow for:', currentTab);
+        }
+
+        // Render analytics
+        function renderAnalytics() {
+            const analyticsContainer = document.getElementById('analytics-container');
+            if (!analyticsContainer) return;
+
+            analyticsContainer.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-secondary);">
+                    <i class="fas fa-chart-line" style="font-size: 64px; margin-bottom: 20px; color: var(--accent-primary);"></i>
+                    <h3>Analytics Dashboard</h3>
+                    <p>Performance metrics and insights will be displayed here</p>
+                </div>
+            `;
+        }
+
+        // Render settings
+        function renderSettings() {
+            const settingsContainer = document.getElementById('settings-container');
+            if (!settingsContainer) return;
+
+            settingsContainer.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-secondary);">
+                    <i class="fas fa-cogs" style="font-size: 64px; margin-bottom: 20px; color: var(--accent-primary);"></i>
+                    <h3>System Configuration</h3>
+                    <p>System settings and configuration options will be available here</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+
+</html>
