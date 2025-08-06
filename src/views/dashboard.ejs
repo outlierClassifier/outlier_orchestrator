@@ -1617,6 +1617,10 @@
 
         async function applyAutomatedPredicts() {
             const exclusionPattern = document.getElementById('automatedExclusionPattern').value.trim();
+            let exclusionRegex = null;
+            if (exclusionPattern) {
+                try { exclusionRegex = new RegExp(exclusionPattern, 'i'); } catch (e) {}
+            }
             const thresholds = {};
             document.querySelectorAll('#automatedModelThresholds .justification-threshold').forEach(input => {
                 const model = input.dataset.model;
@@ -1627,15 +1631,21 @@
                 };
             });
 
-            const formData = new FormData();
-            automatedFiles.forEach(f => formData.append('files', f, f.name));
-            formData.append('exclusionPattern', exclusionPattern);
-            formData.append('thresholds', JSON.stringify(thresholds));
+            const sessionResp = await fetch('/api/automated-predicts/session', { method: 'POST' });
+            const { sessionId } = await sessionResp.json();
 
-            const response = await fetch('/api/automated-predicts', {
-                method: 'POST',
-                body: formData
-            });
+            for (const f of automatedFiles) {
+                if (exclusionRegex && exclusionRegex.test(f.name)) continue;
+                const formData = new FormData();
+                formData.append('file', f, f.name);
+                formData.append('thresholds', JSON.stringify(thresholds));
+                await fetch(`/api/automated-predicts/session/${sessionId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+            }
+
+            const response = await fetch(`/api/automated-predicts/session/${sessionId}/zip`);
             if (!response.ok) {
                 try {
                     const err = await response.json();

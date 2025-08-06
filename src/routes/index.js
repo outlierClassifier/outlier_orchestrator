@@ -1,18 +1,23 @@
 const express = require('express');
 const multer = require('multer');
+const os = require('os');
 const orchestratorController = require('../controllers/orchestrator.controller');
 const { validatedischargealData, validateModelConfig } = require('../middleware/validation.middleware');
 
-const upload = multer();
+const memoryUpload = multer();
+const diskUpload = multer({ dest: os.tmpdir() });
 const router = express.Router();
 
 // Ruta para realizar predicciones
 router.post('/predict', validatedischargealData, orchestratorController.predict);
-router.post('/automated-predicts', upload.any(), orchestratorController.automatedPredicts);
+router.post('/automated-predicts', diskUpload.any(), orchestratorController.automatedPredicts);
+router.post('/automated-predicts/session', orchestratorController.startAutomatedPredictsSession);
+router.post('/automated-predicts/session/:sessionId', diskUpload.single('file'), orchestratorController.uploadAutomatedPredict);
+router.get('/automated-predicts/session/:sessionId/zip', orchestratorController.finalizeAutomatedPredicts);
 
 // Ruta para entrenamiento de modelos
 router.post('/train', validatedischargealData, orchestratorController.train);
-router.post('/train/raw', upload.any(), orchestratorController.trainRaw);
+router.post('/train/raw', memoryUpload.any(), orchestratorController.trainRaw);
 router.post('/trainingCompleted', orchestratorController.trainingCompleted);
 
 // Ruta para verificar la salud de los servicios

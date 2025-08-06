@@ -3,6 +3,13 @@ const orchestratorService = require('../services/orchestrator.service');
 const logger = require('../utils/logger');
 const config = require('../config');
 const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { randomUUID } = require('crypto');
+
+// Sessions to accumulate automated prediction results without keeping everything in memory
+const automatedPredictSessions = {};
 
 /**
  * Controlador para la orquestación de modelos y predicciones
@@ -79,20 +86,29 @@ class OrchestratorController {
       }
 
       const filtered = files.filter(f => !(exclusionRegex && exclusionRegex.test(f.originalname)));
-      const results = [];
       const stats = {};
+
+      res.set('Content-Type', 'application/zip');
+      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+
+      const archive = archiver('zip');
+      archive.on('error', err => { throw err; });
+      archive.pipe(res);
 
       for (const file of filtered) {
         let data;
         try {
-          data = JSON.parse(file.buffer.toString('utf8'));
+          const content = await fs.promises.readFile(file.path, 'utf8');
+          data = JSON.parse(content);
         } catch (e) {
           logger.warn(`Invalid JSON in ${file.originalname}: ${e.message}`);
           continue;
+        } finally {
+          fs.unlink(file.path, () => {});
         }
 
         const result = await orchestratorService.orchestrate(data);
-        results.push({ file: file.originalname, result });
+        archive.append(JSON.stringify(result, null, 2), { name: `raw/${file.originalname}` });
 
         (result.models || []).forEach(modelResp => {
           const name = modelResp.modelName;
@@ -115,17 +131,6 @@ class OrchestratorController {
         });
       }
 
-      res.set('Content-Type', 'application/zip');
-      res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
-
-      const archive = archiver('zip');
-      archive.on('error', err => { throw err; });
-      archive.pipe(res);
-
-      results.forEach(r => {
-        archive.append(JSON.stringify(r.result, null, 2), { name: `raw/${r.file}` });
-      });
-
       Object.entries(stats).forEach(([model, data]) => {
         let csv = 'justification,justification_threshold,count_threshold\n';
         csv += data.rows.map(row => `${row.justification},${row.justification_threshold},${row.count_threshold}`).join('\n');
@@ -140,6 +145,115 @@ class OrchestratorController {
         message: error.message
       });
     }
+  }
+
+  /**
+   * Start a session for sequential automated predictions
+   * @param {Request} _req
+   * @param {Response} res
+   */
+  startAutomatedPredictsSession(_req, res) {
+    const id = randomUUID();
+    const dir = path.join(os.tmpdir(), `automated_predicts_${id}`);
+    fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
+    automatedPredictSessions[id] = { dir, stats: {} };
+    res.json({ sessionId: id });
+  }
+
+  /**
+   * Process a single prediction file for a session
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async uploadAutomatedPredict(req, res) {
+    const { sessionId } = req.params;
+    const session = automatedPredictSessions[sessionId];
+    if (!session) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
+    }
+
+    const file = req.file;
+    if (!file) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'No prediction file uploaded' });
+    }
+
+    const thresholds = req.body.thresholds ? JSON.parse(req.body.thresholds) : {};
+
+    try {
+      const content = await fs.promises.readFile(file.path, 'utf8');
+      const data = JSON.parse(content);
+      const result = await orchestratorService.orchestrate(data);
+
+      const rawDir = path.join(session.dir, 'raw');
+      await fs.promises.writeFile(path.join(rawDir, file.originalname), JSON.stringify(result, null, 2));
+
+      (result.models || []).forEach(modelResp => {
+        const name = modelResp.modelName;
+        const justification = modelResp.result && modelResp.result.justification !== undefined ?
+          modelResp.result.justification : 0;
+
+        const cfg = thresholds[name] || {};
+        const justThresh = parseFloat(cfg.justification) || 0;
+        const countThresh = parseInt(cfg.count) || 1;
+
+        if (!session.stats[name]) {
+          session.stats[name] = { rows: [], passes: [], count: countThresh };
+        }
+
+        const pass = justification > justThresh ? 1 : 0;
+        session.stats[name].passes.push(pass);
+        const history = session.stats[name].passes;
+        const countPass = history.length >= countThresh && history.slice(-countThresh).every(v => v === 1) ? 1 : 0;
+        session.stats[name].rows.push({ justification, justification_threshold: pass, count_threshold: countPass });
+      });
+
+      res.json({ ok: true });
+    } catch (error) {
+      logger.warn(`Error processing ${file.originalname}: ${error.message}`);
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        error: 'Invalid prediction file',
+        message: error.message
+      });
+    } finally {
+      fs.unlink(file.path, () => {});
+    }
+  }
+
+  /**
+   * Finalize session and send ZIP with accumulated results
+   * @param {Request} req
+   * @param {Response} res
+   */
+  async finalizeAutomatedPredicts(req, res) {
+    const { sessionId } = req.params;
+    const session = automatedPredictSessions[sessionId];
+    if (!session) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: 'Invalid session' });
+    }
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="automated_predicts.zip"');
+
+    const archive = archiver('zip');
+    archive.on('error', err => { throw err; });
+    archive.pipe(res);
+
+    const rawDir = path.join(session.dir, 'raw');
+    for (const file of await fs.promises.readdir(rawDir)) {
+      archive.file(path.join(rawDir, file), { name: `raw/${file}` });
+    }
+
+    Object.entries(session.stats).forEach(([model, data]) => {
+      let csv = 'justification,justification_threshold,count_threshold\n';
+      csv += data.rows.map(row => `${row.justification},${row.justification_threshold},${row.count_threshold}`).join('\n');
+      archive.append(csv, { name: `stats/${model}.csv` });
+    });
+
+    await archive.finalize();
+
+    // Cleanup
+    fs.rm(session.dir, { recursive: true, force: true }, () => {});
+    delete automatedPredictSessions[sessionId];
   }
 
   /**
